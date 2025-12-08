@@ -153,21 +153,32 @@ describe('GameState', () => {
             expect(gameState.winner).toBe(null);
         });
 
-        it('should alternate starting player on new round', () => {
-            // Game 0: X starts
+        it('should always start with X on new round', () => {
+            // X always starts every round
             expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
             
-            // Game 1: O starts
-            gameState.reset(true);
-            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.O);
-            
-            // Game 2: X starts
             gameState.reset(true);
             expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
             
-            // Game 3: O starts
             gameState.reset(true);
-            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.O);
+            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
+        });
+
+        it('should alternate who is X each round via getPlayerAsX', () => {
+            // Game 0: P1 is X
+            expect(gameState.getPlayerAsX()).toBe(1);
+            
+            // Game 1: P2 is X
+            gameState.reset(true);
+            expect(gameState.getPlayerAsX()).toBe(2);
+            
+            // Game 2: P1 is X
+            gameState.reset(true);
+            expect(gameState.getPlayerAsX()).toBe(1);
+            
+            // Game 3: P2 is X
+            gameState.reset(true);
+            expect(gameState.getPlayerAsX()).toBe(2);
         });
 
         it('should reset game number with resetGameNumber', () => {

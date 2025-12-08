@@ -171,9 +171,9 @@ class GameController {
     resetGame(sendToRemote = true, newRound = true) {
         this.gameState.reset(newRound);
         
-        // Sync reset with remote player
+        // Sync reset with remote player - include game number for proper sync
         if (this.isRemote() && sendToRemote && this.peerManager.isHost) {
-            this.peerManager.sendReset();
+            this.peerManager.sendReset(this.gameState.gameNumber);
         }
     }
 
@@ -201,7 +201,20 @@ class GameController {
      */
     isMyTurn() {
         if (!this.isRemote()) return true;
-        return this.peerManager.isMyTurn(this.gameState.getCurrentPlayer());
+        
+        // In remote games, we need to account for role swapping each round
+        // Host is always "physical P1", Guest is always "physical P2"
+        // getPlayerAsX() returns 1 if P1 is X this round, 2 if P2 is X
+        const currentPlayer = this.gameState.getCurrentPlayer();
+        const playerAsX = this.gameState.getPlayerAsX();
+        const amIHost = this.peerManager.isHost;
+        
+        // Determine if I'm currently X or O based on round
+        const myCurrentRole = amIHost 
+            ? (playerAsX === 1 ? PLAYERS.X : PLAYERS.O)  // Host is P1
+            : (playerAsX === 2 ? PLAYERS.X : PLAYERS.O); // Guest is P2
+        
+        return currentPlayer === myCurrentRole;
     }
 
     /**
@@ -263,6 +276,19 @@ const game = new GameController();
 // UI state
 let selectedPvpType = null;
 window.selectedRemoteTimer = 0;
+
+/**
+ * Get player label (P1 or P2) for a given piece (X or O)
+ * This accounts for role swapping each round
+ */
+function getPlayerLabel(piece) {
+    const playerAsX = game.gameState.getPlayerAsX();
+    if (piece === PLAYERS.X) {
+        return `P${playerAsX}`;
+    } else {
+        return `P${playerAsX === 1 ? 2 : 1}`;
+    }
+}
 
 // ============================================
 // THREE.JS SETUP
@@ -523,13 +549,13 @@ function updateUI() {
     
     if (game.mode === GAME_MODES.AI) {
         if (currentPlayer === PLAYERS.X) {
-            playerEl.textContent = 'P1';
+            playerEl.textContent = getPlayerLabel(PLAYERS.X);
         } else {
             playerEl.textContent = game.aiController?.isThinking ? 'AI...' : 'AI';
         }
     } else {
-        // For both local and remote: P1 = X, P2 = O
-        playerEl.textContent = currentPlayer === PLAYERS.X ? 'P1' : 'P2';
+        // Show which player's turn it is
+        playerEl.textContent = getPlayerLabel(currentPlayer);
     }
     
     playerEl.className = `player-${currentPlayer.toLowerCase()}`;
@@ -541,12 +567,12 @@ function updateUI() {
     const scoreLabelO = document.querySelector('.player-o-score .score-label');
     
     if (game.mode === GAME_MODES.AI) {
-        scoreLabelX.textContent = 'P1';
+        scoreLabelX.textContent = getPlayerLabel(PLAYERS.X);
         scoreLabelO.textContent = 'AI';
     } else {
-        // P1 = X (cyan), P2 = O (magenta)
-        scoreLabelX.textContent = 'P1';
-        scoreLabelO.textContent = 'P2';
+        // Show which player is X and which is O this round
+        scoreLabelX.textContent = getPlayerLabel(PLAYERS.X);
+        scoreLabelO.textContent = getPlayerLabel(PLAYERS.O);
     }
     
     if (game.isRemote()) {
@@ -559,7 +585,7 @@ function updateRemoteTurnIndicator() {
     const turnText = document.getElementById('turn-text');
     const isMyTurn = game.isMyTurn();
     const currentPlayer = game.gameState.getCurrentPlayer();
-    const playerLabel = currentPlayer === PLAYERS.X ? 'P1' : 'P2';
+    const playerLabel = getPlayerLabel(currentPlayer);
     
     turnIndicator.className = isMyTurn ? 'your-turn' : 'waiting';
     turnText.textContent = isMyTurn ? 'Your turn!' : `${playerLabel}'s turn...`;
@@ -674,6 +700,12 @@ function resetTimerDisplays() {
         // Show the timers container
         timersContainer.classList.remove('hidden');
         
+        // Update timer labels based on who is X this round
+        const timerP1Label = document.querySelector('#timer-p1 .timer-label');
+        const timerP2Label = document.querySelector('#timer-p2 .timer-label');
+        timerP1Label.textContent = getPlayerLabel(PLAYERS.X);
+        timerP2Label.textContent = getPlayerLabel(PLAYERS.O);
+        
         updatePlayerTimerDisplay('p1', PLAYERS.X);
         updatePlayerTimerDisplay('p2', PLAYERS.O);
         
@@ -681,13 +713,8 @@ function resetTimerDisplays() {
         document.getElementById('timer-p1').classList.remove('active');
         document.getElementById('timer-p2').classList.remove('active');
         
-        // Set initial active player
-        const startingPlayer = game.gameState.getCurrentPlayer();
-        if (startingPlayer === PLAYERS.X) {
-            document.getElementById('timer-p1').classList.add('active');
-        } else {
-            document.getElementById('timer-p2').classList.add('active');
-        }
+        // Set initial active player (X always starts)
+        document.getElementById('timer-p1').classList.add('active');
     } else {
         timersContainer.classList.add('hidden');
     }
@@ -712,16 +739,14 @@ function applyTimerTimeout(timedOutPlayer) {
     game.gameState.setGameOver(winner, null);
     game.scores[winner]++;
     
-    const winnerLabel = winner === PLAYERS.X ? 'P1' : 'P2';
-    
     if (game.mode === GAME_MODES.AI) {
         if (winner === PLAYERS.O) {
             showMessage('TIME UP! AI WINS!');
         } else {
-            showMessage('TIME UP! P1 WINS!');
+            showMessage(`TIME UP! ${getPlayerLabel(winner)} WINS!`);
         }
     } else {
-        showMessage(`TIME UP! ${winnerLabel} WINS!`);
+        showMessage(`TIME UP! ${getPlayerLabel(winner)} WINS!`);
     }
     
     updateUI();
@@ -770,11 +795,9 @@ async function handleCellClick(cellIndex) {
             highlightWinningPieces(result.status.pattern);
             
             if (game.mode === GAME_MODES.AI) {
-                showMessage(result.status.winner === PLAYERS.X ? 'P1 WINS!' : 'AI WINS!');
+                showMessage(result.status.winner === PLAYERS.X ? `${getPlayerLabel(PLAYERS.X)} WINS!` : 'AI WINS!');
             } else {
-                // P1 = X, P2 = O
-                const winnerLabel = result.status.winner === PLAYERS.X ? 'P1' : 'P2';
-                showMessage(`${winnerLabel} WINS!`);
+                showMessage(`${getPlayerLabel(result.status.winner)} WINS!`);
             }
         } else {
             showMessage('DRAW!');
@@ -804,7 +827,7 @@ async function handleCellClick(cellIndex) {
             if (aiResult.status.isOver) {
                 if (aiResult.status.winner) {
                     highlightWinningPieces(aiResult.status.pattern);
-                    showMessage(aiResult.status.winner === PLAYERS.X ? 'P1 WINS!' : 'AI WINS!');
+                    showMessage(aiResult.status.winner === PLAYERS.X ? `${getPlayerLabel(PLAYERS.X)} WINS!` : 'AI WINS!');
                 } else {
                     showMessage('DRAW!');
                 }
@@ -833,9 +856,7 @@ function handleRemoteMove(cellIndex) {
         if (result.status.isOver) {
             if (result.status.winner) {
                 highlightWinningPieces(result.status.pattern);
-                // Use P1/P2 labels consistently
-                const winnerLabel = result.status.winner === PLAYERS.X ? 'P1' : 'P2';
-                showMessage(`${winnerLabel} WINS!`);
+                showMessage(`${getPlayerLabel(result.status.winner)} WINS!`);
             } else {
                 showMessage('DRAW!');
             }
@@ -860,7 +881,26 @@ function resetGameUI() {
         hideTimerUI();
     }
     
+    // Update role display color for remote games
+    if (game.isRemote()) {
+        updateRoleDisplay();
+    }
+    
     updateUI();
+}
+
+function updateRoleDisplay() {
+    const roleValue = document.getElementById('role-value');
+    if (!roleValue || !game.peerManager) return;
+    
+    const amIHost = game.peerManager.isHost;
+    const playerAsX = game.gameState.getPlayerAsX();
+    
+    // Am I X this round?
+    const amIX = (amIHost && playerAsX === 1) || (!amIHost && playerAsX === 2);
+    
+    // Update color to show what piece I'm playing
+    roleValue.className = amIX ? 'player-x' : 'player-o';
 }
 
 function startLocalGame(mode, difficulty = null, timerSeconds = 0) {
@@ -900,11 +940,12 @@ function startRemoteGameUI(peerManager, timerSeconds = 0) {
     const timerLabel = timerSeconds > 0 ? ` (${timerSeconds}s)` : '';
     document.getElementById('game-mode-label').textContent = `REMOTE${timerLabel}`;
     
-    // Show role as P1 or P2
+    // Show role as P1 or P2 (Host = P1, Guest = P2)
     document.getElementById('your-role').classList.remove('hidden');
-    const roleLabel = peerManager.myRole === PLAYERS.X ? 'P1' : 'P2';
-    document.getElementById('role-value').textContent = roleLabel;
-    document.getElementById('role-value').className = `player-${peerManager.myRole.toLowerCase()}`;
+    const amIHost = peerManager.isHost;
+    const myPlayerNum = amIHost ? 1 : 2;
+    document.getElementById('role-value').textContent = `P${myPlayerNum}`;
+    // Color will be updated in updateRoleDisplay()
     
     document.getElementById('turn-indicator').classList.remove('hidden');
     
@@ -1099,10 +1140,18 @@ function handleRemoteMessage(data, peerManager) {
             break;
             
         case MESSAGE_TYPES.RESET:
-            // newRound=true to alternate starting player
+            // Sync game number from host to ensure both players are on same round
             gameStarted = false;
-            game.resetGame(false, true);
+            if (data.gameNumber !== undefined) {
+                game.gameState.gameNumber = data.gameNumber;
+            }
+            game.resetGame(false, false); // Don't increment again, we synced from host
             resetGameUI();
+            
+            // Start timer if it's now my turn
+            if (game.hasTimer() && game.isMyTurn()) {
+                game.startTimer();
+            }
             break;
             
         case MESSAGE_TYPES.SYNC:

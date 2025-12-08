@@ -291,11 +291,13 @@ export class PeerManager {
     }
 
     /**
-     * Send a game reset request
+     * Send a game reset request with game number for sync
+     * @param {number} gameNumber - The new game number after reset
      */
-    sendReset() {
+    sendReset(gameNumber) {
         this.send({
-            type: MESSAGE_TYPES.RESET
+            type: MESSAGE_TYPES.RESET,
+            gameNumber
         });
     }
 

@@ -12,7 +12,7 @@ export class GameState {
 
     /**
      * Reset game state to initial values
-     * @param {boolean} newRound - If true, increment game number for alternating starts
+     * @param {boolean} newRound - If true, increment game number
      */
     reset(newRound = false) {
         this.board = Array(BOARD_SIZE).fill(null);
@@ -24,8 +24,8 @@ export class GameState {
             this.gameNumber++;
         }
         
-        // Alternate starting player: P1 (X) on odd games, P2 (O) on even games
-        this.currentPlayer = this.gameNumber % 2 === 0 ? PLAYERS.X : PLAYERS.O;
+        // X always moves first (but who IS X alternates each round)
+        this.currentPlayer = PLAYERS.X;
     }
 
     /**
@@ -36,11 +36,20 @@ export class GameState {
     }
 
     /**
+     * Get which physical player is X this round
+     * Even rounds: P1 is X, Odd rounds: P2 is X
+     * @returns {number} 1 or 2
+     */
+    getPlayerAsX() {
+        return this.gameNumber % 2 === 0 ? 1 : 2;
+    }
+
+    /**
      * Get the starting player for current game
      * @returns {string}
      */
     getStartingPlayer() {
-        return this.gameNumber % 2 === 0 ? PLAYERS.X : PLAYERS.O;
+        return PLAYERS.X; // X always starts
     }
 
     /**
