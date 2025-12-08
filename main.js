@@ -171,10 +171,52 @@ class GameController {
     resetGame(sendToRemote = true, newRound = true) {
         this.gameState.reset(newRound);
         
-        // Sync reset with remote player - include game number for proper sync
+        // Host sends reset signal + full state sync for robustness
         if (this.isRemote() && sendToRemote && this.peerManager.isHost) {
-            this.peerManager.sendReset(this.gameState.gameNumber);
+            this.peerManager.sendReset();
+            this.syncFullState();
         }
+    }
+
+    /**
+     * Get full game state for syncing
+     * @returns {Object} Complete game state
+     */
+    getFullState() {
+        return {
+            gameState: this.gameState.toJSON(),
+            scores: { ...this.scores },
+            timerSeconds: this.timerSeconds,
+            gameStarted: gameStarted
+        };
+    }
+
+    /**
+     * Apply full game state from host
+     * @param {Object} state - Complete game state
+     */
+    applyFullState(state) {
+        if (state.gameState) {
+            this.gameState.fromJSON(state.gameState);
+        }
+        if (state.scores) {
+            this.scores = { ...state.scores };
+        }
+        if (state.timerSeconds !== undefined) {
+            this.timerSeconds = state.timerSeconds;
+        }
+        if (state.gameStarted !== undefined) {
+            gameStarted = state.gameStarted;
+        }
+    }
+
+    /**
+     * Send full state sync to remote player (Host only)
+     */
+    syncFullState() {
+        if (!this.isRemote() || !this.peerManager.isHost) return;
+        
+        this.peerManager.sendFullSync(this.getFullState());
     }
 
     /**
@@ -975,6 +1017,7 @@ function goToMainMenu() {
     document.getElementById('your-role').classList.add('hidden');
     document.getElementById('turn-indicator').classList.add('hidden');
     hideTimerUI();
+    hideRematchModals();
     
     document.getElementById('mode-select-overlay').classList.remove('hidden');
     document.getElementById('ui-overlay').classList.add('hidden');
@@ -1140,21 +1183,24 @@ function handleRemoteMessage(data, peerManager) {
             break;
             
         case MESSAGE_TYPES.RESET:
-            // Sync game number from host to ensure both players are on same round
+            // Host will send FULL_SYNC after this, just prepare
             gameStarted = false;
-            if (data.gameNumber !== undefined) {
-                game.gameState.gameNumber = data.gameNumber;
-            }
-            game.resetGame(false, false); // Don't increment again, we synced from host
+            break;
+            
+        case MESSAGE_TYPES.FULL_SYNC:
+            // Apply complete state from host (single source of truth)
+            game.applyFullState(data);
+            rebuildBoardFromState();
             resetGameUI();
             
-            // Start timer if it's now my turn
-            if (game.hasTimer() && game.isMyTurn()) {
+            // Start timer if it's my turn and game has started
+            if (game.hasTimer() && gameStarted && game.isMyTurn()) {
                 game.startTimer();
             }
             break;
             
         case MESSAGE_TYPES.SYNC:
+            // Legacy sync - still useful for mid-game state recovery
             game.gameState.fromJSON(data);
             game.scores = data.scores || game.scores;
             rebuildBoardFromState();
@@ -1179,8 +1225,105 @@ function handleRemoteMessage(data, peerManager) {
                 applyTimerTimeout(data.timedOutPlayer);
             }
             break;
+            
+        case MESSAGE_TYPES.REMATCH_REQUEST:
+            // Opponent wants to play again
+            showRematchRequest(data.playerNum);
+            break;
+            
+        case MESSAGE_TYPES.REMATCH_RESPONSE:
+            // Opponent responded to our rematch request
+            handleRematchResponse(data.accepted);
+            break;
     }
 }
+
+// ============================================
+// REMATCH SYSTEM
+// ============================================
+let pendingRematch = false;
+
+function requestRematch() {
+    if (!game.isRemote() || !game.peerManager) return;
+    
+    // Show waiting modal
+    pendingRematch = true;
+    document.getElementById('waiting-rematch-modal').classList.remove('hidden');
+    
+    // Send rematch request with player number
+    const myPlayerNum = game.peerManager.isHost ? 1 : 2;
+    game.peerManager.sendRematchRequest(myPlayerNum);
+}
+
+function showRematchRequest(playerNum) {
+    const message = `P${playerNum} has requested to play again!`;
+    document.getElementById('rematch-message').textContent = message;
+    document.getElementById('rematch-modal').classList.remove('hidden');
+}
+
+function hideRematchModals() {
+    document.getElementById('rematch-modal').classList.add('hidden');
+    document.getElementById('waiting-rematch-modal').classList.add('hidden');
+    pendingRematch = false;
+}
+
+function acceptRematch() {
+    hideRematchModals();
+    
+    // Send acceptance to opponent
+    if (game.peerManager) {
+        game.peerManager.sendRematchResponse(true);
+    }
+    
+    // Start new game
+    startRematchGame();
+}
+
+function declineRematch() {
+    hideRematchModals();
+    
+    // Send decline to opponent
+    if (game.peerManager) {
+        game.peerManager.sendRematchResponse(false);
+    }
+    
+    // Show message that rematch was declined
+    showMessage('REMATCH DECLINED');
+    setTimeout(hideMessage, 2000);
+}
+
+function handleRematchResponse(accepted) {
+    hideRematchModals();
+    
+    if (accepted) {
+        // Opponent accepted, start new game
+        startRematchGame();
+    } else {
+        // Opponent declined
+        showMessage('OPPONENT DECLINED');
+        setTimeout(hideMessage, 2000);
+    }
+}
+
+function startRematchGame() {
+    gameStarted = false;
+    game.resetGame(true);
+    resetGameUI();
+    
+    // In remote, only start timer if it's my turn
+    if (game.hasTimer() && game.isMyTurn()) {
+        game.startTimer();
+    }
+}
+
+function cancelRematchRequest() {
+    hideRematchModals();
+}
+
+// Rematch modal button listeners
+document.getElementById('accept-rematch-btn').addEventListener('click', acceptRematch);
+document.getElementById('decline-rematch-btn').addEventListener('click', declineRematch);
+document.getElementById('cancel-rematch-btn').addEventListener('click', cancelRematchRequest);
 
 // ============================================
 // INTERACTION
@@ -1209,24 +1352,18 @@ canvas.addEventListener('mousemove', onMouseMove);
 canvas.addEventListener('click', onClick);
 
 document.getElementById('reset-btn').addEventListener('click', () => {
-    if (game.isRemote() && !game.peerManager.isHost && !game.gameState.isGameOver()) {
-        showMessage('WAIT FOR HOST');
-        setTimeout(hideMessage, 1500);
+    // In remote PvP, use rematch request system
+    if (game.isRemote()) {
+        requestRematch();
         return;
     }
+    
     game.resetGame(true);
     resetGameUI();
     
     // Start timer for first turn of new round
     if (game.hasTimer()) {
-        // In remote, only start if it's my turn
-        if (game.isRemote()) {
-            if (game.isMyTurn()) {
-                game.startTimer();
-            }
-        } else {
-            game.startTimer();
-        }
+        game.startTimer();
     }
 });
 

@@ -240,6 +240,30 @@
                 <button id="menu-btn">MAIN MENU</button>
             </div>
         </div>
+        
+        <!-- Rematch Request Modal -->
+        <div id="rematch-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2 class="modal-title">REMATCH REQUEST</h2>
+                <p id="rematch-message">Player has requested to play again!</p>
+                <div class="modal-buttons">
+                    <button id="accept-rematch-btn" class="modal-btn accept">ACCEPT</button>
+                    <button id="decline-rematch-btn" class="modal-btn decline">DECLINE</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Waiting for Response Modal -->
+        <div id="waiting-rematch-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2 class="modal-title">REMATCH REQUESTED</h2>
+                <p>Waiting for opponent's response...</p>
+                <div class="loading-dots modal-dots">
+                    <span></span><span></span><span></span>
+                </div>
+                <button id="cancel-rematch-btn" class="modal-btn cancel">CANCEL</button>
+            </div>
+        </div>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>

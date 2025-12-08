@@ -10,9 +10,12 @@ export const MESSAGE_TYPES = {
     MOVE: 'move',
     RESET: 'reset',
     SYNC: 'sync',
+    FULL_SYNC: 'full-sync',  // Complete state sync from host
     CHAT: 'chat',
     TIMER_SYNC: 'timer-sync',
-    TIMER_TIMEOUT: 'timer-timeout'
+    TIMER_TIMEOUT: 'timer-timeout',
+    REMATCH_REQUEST: 'rematch-request',
+    REMATCH_RESPONSE: 'rematch-response'
 };
 
 /**
@@ -291,13 +294,22 @@ export class PeerManager {
     }
 
     /**
-     * Send a game reset request with game number for sync
-     * @param {number} gameNumber - The new game number after reset
+     * Send a game reset request
      */
-    sendReset(gameNumber) {
+    sendReset() {
         this.send({
-            type: MESSAGE_TYPES.RESET,
-            gameNumber
+            type: MESSAGE_TYPES.RESET
+        });
+    }
+
+    /**
+     * Send full state sync (Host only, for robust state management)
+     * @param {Object} state - Complete game state
+     */
+    sendFullSync(state) {
+        this.send({
+            type: MESSAGE_TYPES.FULL_SYNC,
+            ...state
         });
     }
 
@@ -333,6 +345,28 @@ export class PeerManager {
         this.send({
             type: MESSAGE_TYPES.TIMER_TIMEOUT,
             timedOutPlayer
+        });
+    }
+
+    /**
+     * Send rematch request to opponent
+     * @param {number} playerNum - The player number requesting (1 or 2)
+     */
+    sendRematchRequest(playerNum) {
+        this.send({
+            type: MESSAGE_TYPES.REMATCH_REQUEST,
+            playerNum
+        });
+    }
+
+    /**
+     * Send rematch response to opponent
+     * @param {boolean} accepted - Whether the rematch was accepted
+     */
+    sendRematchResponse(accepted) {
+        this.send({
+            type: MESSAGE_TYPES.REMATCH_RESPONSE,
+            accepted
         });
     }
 
