@@ -95,6 +95,18 @@
                     </div>
                 </div>
                 
+                <!-- Timer Selection for PvP -->
+                <div id="timer-select" class="hidden">
+                    <p class="difficulty-label">Move Timer</p>
+                    <div id="timer-buttons">
+                        <button class="timer-btn" data-timer="0">OFF</button>
+                        <button class="timer-btn" data-timer="10">10s</button>
+                        <button class="timer-btn" data-timer="5">5s</button>
+                        <button class="timer-btn" data-timer="3">3s</button>
+                    </div>
+                    <button id="back-to-pvp-type-from-timer" class="back-btn">← BACK</button>
+                </div>
+                
                 <!-- Remote Game Setup -->
                 <div id="remote-setup" class="hidden">
                     <div id="create-room-section">
@@ -154,9 +166,18 @@
                 <div id="difficulty-select" class="hidden">
                     <p class="difficulty-label">Select Difficulty</p>
                     <div id="difficulty-buttons">
-                        <button class="difficulty-btn" data-difficulty="easy">EASY</button>
-                        <button class="difficulty-btn" data-difficulty="medium">MEDIUM</button>
-                        <button class="difficulty-btn" data-difficulty="hard">HARD</button>
+                        <button class="difficulty-btn" data-difficulty="easy" data-timer="10">
+                            <span class="diff-name">EASY</span>
+                            <span class="diff-timer">10s timer</span>
+                        </button>
+                        <button class="difficulty-btn" data-difficulty="medium" data-timer="5">
+                            <span class="diff-name">MEDIUM</span>
+                            <span class="diff-timer">5s timer</span>
+                        </button>
+                        <button class="difficulty-btn" data-difficulty="hard" data-timer="3">
+                            <span class="diff-name">HARD</span>
+                            <span class="diff-timer">3s timer</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -191,6 +212,24 @@
                 </div>
                 <div id="turn-indicator" class="hidden">
                     <span id="turn-text">Your turn!</span>
+                </div>
+            </div>
+            
+            <!-- Dual Timer Display -->
+            <div id="timers-container" class="hidden">
+                <div id="timer-p1" class="player-timer">
+                    <span class="timer-label">P1</span>
+                    <div class="timer-bar">
+                        <div class="timer-fill" data-player="x"></div>
+                    </div>
+                    <span class="timer-text">10</span>
+                </div>
+                <div id="timer-p2" class="player-timer">
+                    <span class="timer-label">P2</span>
+                    <div class="timer-bar">
+                        <div class="timer-fill" data-player="o"></div>
+                    </div>
+                    <span class="timer-text">10</span>
                 </div>
             </div>
             

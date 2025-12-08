@@ -265,6 +265,176 @@ h1 {
 }
 
 /* ============================================
+   DUAL TIMER DISPLAY
+   ============================================ */
+#timers-container {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-lg);
+    margin-top: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#timers-container.hidden {
+    display: none;
+}
+
+.player-timer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    opacity: 0.5;
+    transition: opacity 0.3s ease;
+}
+
+.player-timer.active {
+    opacity: 1;
+}
+
+.timer-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    min-width: 22px;
+    text-align: center;
+}
+
+#timer-p1 .timer-label {
+    color: var(--accent-cyan);
+}
+
+#timer-p2 .timer-label {
+    color: var(--accent-magenta);
+}
+
+.timer-bar {
+    width: 50px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.timer-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.1s linear, background-color 0.3s ease;
+    width: 100%;
+}
+
+.timer-fill[data-player="x"] {
+    background: var(--accent-cyan);
+}
+
+.timer-fill[data-player="o"] {
+    background: var(--accent-magenta);
+}
+
+.timer-fill.warning {
+    background: var(--accent-gold) !important;
+}
+
+.timer-fill.critical {
+    background: #ff3366 !important;
+    animation: timerPulse 0.5s ease-in-out infinite;
+}
+
+@keyframes timerPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.timer-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+    color: var(--text-primary);
+    transition: color 0.3s ease;
+}
+
+.timer-text.warning {
+    color: var(--accent-gold);
+}
+
+.timer-text.critical {
+    color: #ff3366;
+}
+
+/* Timer selection buttons */
+#timer-select {
+    width: 100%;
+    animation: slideUp 0.25s ease;
+}
+
+#timer-select.hidden {
+    display: none;
+}
+
+#timer-buttons {
+    display: flex;
+    gap: var(--space-sm);
+    justify-content: center;
+    margin-bottom: var(--space-md);
+}
+
+.timer-btn {
+    flex: 1;
+    max-width: 70px;
+    padding: var(--space-sm) var(--space-md);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid rgba(0, 245, 255, 0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.timer-btn:active,
+.timer-btn.selected {
+    background: rgba(0, 245, 255, 0.15);
+    border-color: var(--accent-cyan);
+}
+
+.timer-btn[data-timer="0"] {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.timer-btn[data-timer="0"]:active,
+.timer-btn[data-timer="0"].selected {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--text-muted);
+}
+
+/* Difficulty button with timer info */
+.difficulty-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+}
+
+.diff-name {
+    font-size: inherit;
+}
+
+.diff-timer {
+    font-size: 0.5rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+}
+
+/* ============================================
    MESSAGE POPUP
    ============================================ */
 #message {

@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GameState } from './js/game/GameState.js';
 import { getGameStatus } from './js/game/GameLogic.js';
 import { AIController } from './js/game/AI.js';
-import { PLAYERS, GAME_MODES, AI_DIFFICULTY } from './js/game/constants.js';
+import { PLAYERS, GAME_MODES } from './js/game/constants.js';
 import { 
     PeerManager, 
     MESSAGE_TYPES, 
@@ -14,6 +14,7 @@ import {
     checkWebRTCSupport,
     getWebRTCDiagnostics
 } from './js/multiplayer/PeerManager.js';
+import { Timer, TIMER_PRESETS } from './js/game/Timer.js';
 
 // ============================================
 // GAME CONTROLLER
@@ -25,6 +26,10 @@ class GameController {
         this.mode = null;
         this.aiController = null;
         this.peerManager = null;
+        this.timerSeconds = 0;
+        this.timer = null;
+        this.onTimerTick = null;
+        this.onTimerTimeout = null;
         
         // Bind methods
         this.handleMove = this.handleMove.bind(this);
@@ -34,18 +39,26 @@ class GameController {
     /**
      * Initialize a new game
      */
-    startGame(mode, difficulty = null) {
+    startGame(mode, difficulty = null, timerSeconds = 0) {
         this.mode = mode;
         this.scores = { X: 0, O: 0 };
+        this.timerSeconds = timerSeconds;
         this.gameState.resetGameNumber();
         this.gameState.reset(false);
 
         // Setup AI controller if needed
         if (mode === GAME_MODES.AI && difficulty) {
             this.aiController = new AIController(difficulty, PLAYERS.O);
+            // Set timer based on difficulty if not specified
+            if (timerSeconds === 0) {
+                this.timerSeconds = TIMER_PRESETS[difficulty.toUpperCase()] || 0;
+            }
         } else {
             this.aiController = null;
         }
+
+        // Setup timer
+        this.setupTimer();
 
         // Cleanup any existing peer connection
         if (this.peerManager && mode !== GAME_MODES.PVP_REMOTE) {
@@ -57,13 +70,67 @@ class GameController {
     /**
      * Start a remote multiplayer game
      */
-    startRemoteGame(peerManager) {
+    startRemoteGame(peerManager, timerSeconds = 0) {
         this.mode = GAME_MODES.PVP_REMOTE;
         this.peerManager = peerManager;
         this.scores = { X: 0, O: 0 };
+        this.timerSeconds = timerSeconds;
         this.gameState.resetGameNumber();
         this.gameState.reset(false);
         this.aiController = null;
+        this.setupTimer();
+    }
+
+    /**
+     * Setup the move timer
+     */
+    setupTimer() {
+        if (this.timer) {
+            this.timer.stop();
+        }
+
+        if (this.timerSeconds > 0) {
+            this.timer = new Timer(
+                this.timerSeconds,
+                (remaining, total) => {
+                    if (this.onTimerTick) {
+                        this.onTimerTick(remaining, total);
+                    }
+                },
+                () => {
+                    if (this.onTimerTimeout) {
+                        this.onTimerTimeout();
+                    }
+                }
+            );
+        } else {
+            this.timer = null;
+        }
+    }
+
+    /**
+     * Start the timer for current turn
+     */
+    startTimer() {
+        if (this.timer && !this.gameState.isGameOver()) {
+            this.timer.start();
+        }
+    }
+
+    /**
+     * Stop the timer
+     */
+    stopTimer() {
+        if (this.timer) {
+            this.timer.stop();
+        }
+    }
+
+    /**
+     * Check if timer is enabled
+     */
+    hasTimer() {
+        return this.timerSeconds > 0 && this.timer !== null;
     }
 
     /**
@@ -114,9 +181,12 @@ class GameController {
      * Full reset for new match (resets game number too)
      */
     resetMatch() {
+        this.stopTimer();
         this.gameState.resetGameNumber();
         this.gameState.reset(false);
         this.scores = { X: 0, O: 0 };
+        this.timerSeconds = 0;
+        this.timer = null;
     }
 
     /**
@@ -139,6 +209,15 @@ class GameController {
      */
     getMyRole() {
         return this.peerManager?.myRole || null;
+    }
+
+    /**
+     * Check if it's the AI's turn
+     */
+    isAITurn() {
+        return this.mode === GAME_MODES.AI && 
+               this.gameState.getCurrentPlayer() === PLAYERS.O &&
+               !this.gameState.isGameOver();
     }
 
     /**
@@ -170,6 +249,7 @@ class GameController {
      * Cleanup resources
      */
     cleanup() {
+        this.stopTimer();
         if (this.peerManager) {
             this.peerManager.destroy();
             this.peerManager = null;
@@ -179,6 +259,10 @@ class GameController {
 
 // Create game controller instance
 const game = new GameController();
+
+// UI state
+let selectedPvpType = null;
+window.selectedRemoteTimer = 0;
 
 // ============================================
 // THREE.JS SETUP
@@ -484,11 +568,168 @@ function updateRemoteTurnIndicator() {
 function hideAllModeScreens() {
     document.getElementById('mode-buttons').classList.remove('hidden');
     document.getElementById('pvp-type-select').classList.add('hidden');
+    document.getElementById('timer-select').classList.add('hidden');
     document.getElementById('remote-setup').classList.add('hidden');
     document.getElementById('waiting-room').classList.add('hidden');
     document.getElementById('connection-status').classList.add('hidden');
     document.getElementById('difficulty-select').classList.add('hidden');
 }
+
+// ============================================
+// DUAL TIMER UI
+// ============================================
+// Track remaining time for both players
+const playerTimers = {
+    X: { remaining: 0, total: 0 },
+    O: { remaining: 0, total: 0 }
+};
+
+// Track if first move has been made (for delayed timer start)
+let gameStarted = false;
+let lastTimerSync = 0;
+
+// Timer UI constants
+const TIMER_SYNC_INTERVAL = 500; // Throttle sync to every 500ms
+const TIMER_CRITICAL_SECONDS = 2;
+const TIMER_WARNING_THRESHOLD = 0.4; // 40% remaining
+
+function initializePlayerTimers(total) {
+    playerTimers.X = { remaining: total, total };
+    playerTimers.O = { remaining: total, total };
+}
+
+function updateTimerUI(remaining, total) {
+    const timersContainer = document.getElementById('timers-container');
+    
+    if (!game.hasTimer()) {
+        timersContainer.classList.add('hidden');
+        return;
+    }
+    
+    timersContainer.classList.remove('hidden');
+    
+    // Update current player's remaining time
+    const currentPlayer = game.gameState.getCurrentPlayer();
+    playerTimers[currentPlayer].remaining = remaining;
+    playerTimers[currentPlayer].total = total;
+    
+    // Sync timer to remote opponent (throttled to avoid network flooding)
+    const now = Date.now();
+    if (game.isRemote() && game.peerManager && game.isMyTurn() && 
+        now - lastTimerSync > TIMER_SYNC_INTERVAL) {
+        game.peerManager.sendTimerSync(remaining, currentPlayer);
+        lastTimerSync = now;
+    }
+    
+    // Update both timer displays
+    updatePlayerTimerDisplay('p1', PLAYERS.X);
+    updatePlayerTimerDisplay('p2', PLAYERS.O);
+    
+    // Highlight active player
+    const timerP1 = document.getElementById('timer-p1');
+    const timerP2 = document.getElementById('timer-p2');
+    
+    timerP1.classList.toggle('active', currentPlayer === PLAYERS.X);
+    timerP2.classList.toggle('active', currentPlayer === PLAYERS.O);
+}
+
+function updatePlayerTimerDisplay(timerId, player) {
+    const timerEl = document.getElementById(`timer-${timerId}`);
+    const timerFill = timerEl.querySelector('.timer-fill');
+    const timerText = timerEl.querySelector('.timer-text');
+    
+    const { remaining, total } = playerTimers[player];
+    const progress = total > 0 ? remaining / total : 1;
+    
+    timerFill.style.width = `${progress * 100}%`;
+    timerText.textContent = Math.ceil(remaining);
+    
+    // Color based on time remaining
+    timerFill.classList.remove('warning', 'critical');
+    timerText.classList.remove('warning', 'critical');
+    
+    // Only show warning colors for the active player
+    if (game.gameState.getCurrentPlayer() === player) {
+        if (remaining <= TIMER_CRITICAL_SECONDS) {
+            timerFill.classList.add('critical');
+            timerText.classList.add('critical');
+        } else if (remaining <= total * TIMER_WARNING_THRESHOLD) {
+            timerFill.classList.add('warning');
+            timerText.classList.add('warning');
+        }
+    }
+}
+
+function hideTimerUI() {
+    document.getElementById('timers-container').classList.add('hidden');
+}
+
+function resetTimerDisplays() {
+    const total = game.timerSeconds;
+    initializePlayerTimers(total);
+    
+    const timersContainer = document.getElementById('timers-container');
+    
+    if (game.hasTimer()) {
+        // Show the timers container
+        timersContainer.classList.remove('hidden');
+        
+        updatePlayerTimerDisplay('p1', PLAYERS.X);
+        updatePlayerTimerDisplay('p2', PLAYERS.O);
+        
+        // Reset active states
+        document.getElementById('timer-p1').classList.remove('active');
+        document.getElementById('timer-p2').classList.remove('active');
+        
+        // Set initial active player
+        const startingPlayer = game.gameState.getCurrentPlayer();
+        if (startingPlayer === PLAYERS.X) {
+            document.getElementById('timer-p1').classList.add('active');
+        } else {
+            document.getElementById('timer-p2').classList.add('active');
+        }
+    } else {
+        timersContainer.classList.add('hidden');
+    }
+}
+
+function handleTimerTimeout() {
+    // Time ran out - current player loses
+    const currentPlayer = game.gameState.getCurrentPlayer();
+    const winner = currentPlayer === PLAYERS.X ? PLAYERS.O : PLAYERS.X;
+    
+    // Notify remote opponent about timeout
+    if (game.isRemote() && game.peerManager) {
+        game.peerManager.sendTimerTimeout(currentPlayer);
+    }
+    
+    applyTimerTimeout(currentPlayer);
+}
+
+function applyTimerTimeout(timedOutPlayer) {
+    const winner = timedOutPlayer === PLAYERS.X ? PLAYERS.O : PLAYERS.X;
+    
+    game.gameState.setGameOver(winner, null);
+    game.scores[winner]++;
+    
+    const winnerLabel = winner === PLAYERS.X ? 'P1' : 'P2';
+    
+    if (game.mode === GAME_MODES.AI) {
+        if (winner === PLAYERS.O) {
+            showMessage('TIME UP! AI WINS!');
+        } else {
+            showMessage('TIME UP! P1 WINS!');
+        }
+    } else {
+        showMessage(`TIME UP! ${winnerLabel} WINS!`);
+    }
+    
+    updateUI();
+}
+
+// Setup timer callbacks
+game.onTimerTick = updateTimerUI;
+game.onTimerTimeout = handleTimerTimeout;
 
 function showConnectionStatus(message) {
     hideAllModeScreens();
@@ -511,10 +752,18 @@ function showWaitingRoom() {
 async function handleCellClick(cellIndex) {
     if (!game.canMove()) return;
     
+    // Stop timer on move
+    game.stopTimer();
+    
+    // Mark game as started (for delayed timer start in remote games)
+    gameStarted = true;
+    
     const result = game.handleMove(cellIndex);
     if (!result || !result.moved) return;
     
     addPieceToBoard(cellIndex, game.gameState.getBoard()[cellIndex]);
+    
+    // Note: Move is sent in game.handleMove() - no duplicate send needed
     
     if (result.status.isOver) {
         if (result.status.winner) {
@@ -530,12 +779,18 @@ async function handleCellClick(cellIndex) {
         } else {
             showMessage('DRAW!');
         }
+    } else {
+        // Game continues - start timer for next player (if not AI turn)
+        if (!game.isAITurn() && game.hasTimer()) {
+            game.startTimer();
+        }
     }
     
     updateUI();
     
     // Trigger AI move if needed
     if (game.mode === GAME_MODES.AI && !game.gameState.isGameOver()) {
+        // AI doesn't need timer running during its turn
         const aiResult = await game.triggerAIMove();
         if (aiResult?.moved) {
             const board = game.gameState.getBoard();
@@ -553,6 +808,11 @@ async function handleCellClick(cellIndex) {
                 } else {
                     showMessage('DRAW!');
                 }
+            } else {
+                // Start timer for player's turn after AI move
+                if (game.hasTimer()) {
+                    game.startTimer();
+                }
             }
             updateUI();
         }
@@ -560,6 +820,12 @@ async function handleCellClick(cellIndex) {
 }
 
 function handleRemoteMove(cellIndex) {
+    // Stop timer when opponent moves
+    game.stopTimer();
+    
+    // Mark game as started
+    gameStarted = true;
+    
     const result = game.handleMove(cellIndex, true);
     if (result?.moved) {
         addPieceToBoard(cellIndex, game.gameState.getBoard()[cellIndex]);
@@ -573,6 +839,11 @@ function handleRemoteMove(cellIndex) {
             } else {
                 showMessage('DRAW!');
             }
+        } else {
+            // My turn now - start timer
+            if (game.hasTimer()) {
+                game.startTimer();
+            }
         }
         updateUI();
     }
@@ -581,15 +852,24 @@ function handleRemoteMove(cellIndex) {
 function resetGameUI() {
     clearPieces();
     hideMessage();
+    
+    // Reset timer displays for both players
+    if (game.hasTimer()) {
+        resetTimerDisplays();
+    } else {
+        hideTimerUI();
+    }
+    
     updateUI();
 }
 
-function startLocalGame(mode, difficulty = null) {
-    game.startGame(mode, difficulty);
+function startLocalGame(mode, difficulty = null, timerSeconds = 0) {
+    game.startGame(mode, difficulty, timerSeconds);
     
     const modeLabel = document.getElementById('game-mode-label');
     if (mode === GAME_MODES.PVP_LOCAL) {
-        modeLabel.textContent = 'LOCAL';
+        const timerLabel = timerSeconds > 0 ? ` (${timerSeconds}s)` : '';
+        modeLabel.textContent = `LOCAL${timerLabel}`;
     } else if (mode === GAME_MODES.AI) {
         modeLabel.textContent = `VS AI (${difficulty.toUpperCase()})`;
     }
@@ -600,13 +880,25 @@ function startLocalGame(mode, difficulty = null) {
     document.getElementById('mode-select-overlay').classList.add('hidden');
     document.getElementById('ui-overlay').classList.remove('hidden');
     
+    // Initialize both player timers
+    if (timerSeconds > 0) {
+        initializePlayerTimers(timerSeconds);
+    }
+    
     resetGameUI();
+    
+    // Start timer for first turn
+    if (game.hasTimer()) {
+        game.startTimer();
+    }
 }
 
-function startRemoteGameUI(peerManager) {
-    game.startRemoteGame(peerManager);
+function startRemoteGameUI(peerManager, timerSeconds = 0) {
+    game.startRemoteGame(peerManager, timerSeconds);
+    gameStarted = false; // Timer starts on first move
     
-    document.getElementById('game-mode-label').textContent = 'REMOTE';
+    const timerLabel = timerSeconds > 0 ? ` (${timerSeconds}s)` : '';
+    document.getElementById('game-mode-label').textContent = `REMOTE${timerLabel}`;
     
     // Show role as P1 or P2
     document.getElementById('your-role').classList.remove('hidden');
@@ -620,16 +912,28 @@ function startRemoteGameUI(peerManager) {
     document.getElementById('mode-select-overlay').classList.add('hidden');
     document.getElementById('ui-overlay').classList.remove('hidden');
     
+    // Initialize both player timers
+    if (timerSeconds > 0) {
+        initializePlayerTimers(timerSeconds);
+    }
+    
     resetGameUI();
+    
+    // Don't start timer yet - wait for first move
+    // Timer will start when P1 makes their first move
 }
 
 function goToMainMenu() {
     game.cleanup();
     game.resetMatch();
     game.mode = null;
+    gameStarted = false;
+    window.selectedRemoteTimer = 0;
+    selectedPvpType = null;
     
     document.getElementById('your-role').classList.add('hidden');
     document.getElementById('turn-indicator').classList.add('hidden');
+    hideTimerUI();
     
     document.getElementById('mode-select-overlay').classList.remove('hidden');
     document.getElementById('ui-overlay').classList.add('hidden');
@@ -638,6 +942,7 @@ function goToMainMenu() {
     document.getElementById('mode-buttons').classList.remove('hidden');
     
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('selected'));
+    document.querySelectorAll('.timer-btn').forEach(btn => btn.classList.remove('selected'));
     
     resetGameUI();
 }
@@ -662,11 +967,16 @@ async function createRoom() {
     
     showConnectionStatus('Creating room...');
     
+    const timerSeconds = window.selectedRemoteTimer || 0;
+    
     try {
         const peerManager = new PeerManager();
         
+        // Set game settings so they're sent to joiner
+        peerManager.setGameSettings({ timerSeconds });
+        
         peerManager.onConnect = (info) => {
-            startRemoteGameUI(peerManager);
+            startRemoteGameUI(peerManager, timerSeconds);
         };
         
         peerManager.onMessage = (data) => {
@@ -734,7 +1044,9 @@ async function joinRoom(roomCode) {
         const peerManager = new PeerManager();
         
         peerManager.onConnect = (info) => {
-            startRemoteGameUI(peerManager);
+            // Use timer settings from host (info.timerSeconds), not local selection
+            const timerSeconds = info.timerSeconds || 0;
+            startRemoteGameUI(peerManager, timerSeconds);
         };
         
         peerManager.onMessage = (data) => {
@@ -788,6 +1100,7 @@ function handleRemoteMessage(data, peerManager) {
             
         case MESSAGE_TYPES.RESET:
             // newRound=true to alternate starting player
+            gameStarted = false;
             game.resetGame(false, true);
             resetGameUI();
             break;
@@ -797,6 +1110,25 @@ function handleRemoteMessage(data, peerManager) {
             game.scores = data.scores || game.scores;
             rebuildBoardFromState();
             updateUI();
+            break;
+            
+        case MESSAGE_TYPES.TIMER_SYNC:
+            // Update opponent's timer display
+            if (data.player && data.remaining !== undefined) {
+                playerTimers[data.player].remaining = data.remaining;
+                updatePlayerTimerDisplay(
+                    data.player === PLAYERS.X ? 'p1' : 'p2', 
+                    data.player
+                );
+            }
+            break;
+            
+        case MESSAGE_TYPES.TIMER_TIMEOUT:
+            // Opponent's timer ran out
+            if (data.timedOutPlayer) {
+                game.stopTimer();
+                applyTimerTimeout(data.timedOutPlayer);
+            }
             break;
     }
 }
@@ -835,6 +1167,18 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     }
     game.resetGame(true);
     resetGameUI();
+    
+    // Start timer for first turn of new round
+    if (game.hasTimer()) {
+        // In remote, only start if it's my turn
+        if (game.isRemote()) {
+            if (game.isMyTurn()) {
+                game.startTimer();
+            }
+        } else {
+            game.startTimer();
+        }
+    }
 });
 
 document.getElementById('menu-btn').addEventListener('click', goToMainMenu);
@@ -877,20 +1221,39 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 
 document.querySelectorAll('.pvp-type-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        const pvpType = btn.dataset.pvpType;
+        selectedPvpType = btn.dataset.pvpType;
+        document.getElementById('pvp-type-select').classList.add('hidden');
+        document.getElementById('timer-select').classList.remove('hidden');
+    });
+});
+
+// Timer selection for PvP
+document.querySelectorAll('.timer-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const timerSeconds = parseInt(btn.dataset.timer, 10);
         
-        if (pvpType === 'local') {
-            startLocalGame(GAME_MODES.PVP_LOCAL);
+        document.querySelectorAll('.timer-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        
+        if (selectedPvpType === 'local') {
+            startLocalGame(GAME_MODES.PVP_LOCAL, null, timerSeconds);
         } else {
-            document.getElementById('pvp-type-select').classList.add('hidden');
+            // Store timer for remote game
+            window.selectedRemoteTimer = timerSeconds;
+            document.getElementById('timer-select').classList.add('hidden');
             document.getElementById('remote-setup').classList.remove('hidden');
         }
     });
 });
 
+document.getElementById('back-to-pvp-type-from-timer').addEventListener('click', () => {
+    document.getElementById('timer-select').classList.add('hidden');
+    document.getElementById('pvp-type-select').classList.remove('hidden');
+});
+
 document.getElementById('back-to-pvp-type').addEventListener('click', () => {
     document.getElementById('remote-setup').classList.add('hidden');
-    document.getElementById('pvp-type-select').classList.remove('hidden');
+    document.getElementById('timer-select').classList.remove('hidden');
 });
 
 document.getElementById('create-room-btn').addEventListener('click', createRoom);
@@ -946,7 +1309,8 @@ document.getElementById('cancel-waiting-btn').addEventListener('click', () => {
 document.querySelectorAll('.difficulty-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const difficulty = btn.dataset.difficulty;
-        startLocalGame(GAME_MODES.AI, difficulty);
+        const timerSeconds = parseInt(btn.dataset.timer, 10) || 0;
+        startLocalGame(GAME_MODES.AI, difficulty, timerSeconds);
     });
 });
 

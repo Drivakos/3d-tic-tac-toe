@@ -10,7 +10,9 @@ export const MESSAGE_TYPES = {
     MOVE: 'move',
     RESET: 'reset',
     SYNC: 'sync',
-    CHAT: 'chat'
+    CHAT: 'chat',
+    TIMER_SYNC: 'timer-sync',
+    TIMER_TIMEOUT: 'timer-timeout'
 };
 
 /**
@@ -93,12 +95,22 @@ export class PeerManager {
         this.isHost = false;
         this.myRole = null;
         this.isConnected = false;
+        this.gameSettings = null;
         
         // Event handlers
         this.onConnect = null;
         this.onDisconnect = null;
         this.onMessage = null;
         this.onError = null;
+        this.onGameStart = null; // Called when game settings are received
+    }
+
+    /**
+     * Set game settings to be shared with opponent
+     * @param {Object} settings - Game settings (timerSeconds, etc.)
+     */
+    setGameSettings(settings) {
+        this.gameSettings = settings;
     }
 
     /**
@@ -156,10 +168,12 @@ export class PeerManager {
             console.log('Peer connected:', conn.peer);
             this.isConnected = true;
             
-            // Send game start message with role assignment
+            // Send game start message with role assignment and settings
+            // Timer will be added by the caller via sendGameStart
             this.send({
                 type: MESSAGE_TYPES.GAME_START,
-                role: PLAYERS.O // Joiner is O
+                role: PLAYERS.O, // Joiner is O
+                timerSeconds: this.gameSettings?.timerSeconds || 0
             });
             
             if (this.onConnect) {
@@ -218,10 +232,12 @@ export class PeerManager {
                 // Handle game start message
                 if (data.type === MESSAGE_TYPES.GAME_START) {
                     this.myRole = data.role;
+                    this.gameSettings = { timerSeconds: data.timerSeconds || 0 };
                     if (this.onConnect) {
                         this.onConnect({
                             isHost: false,
-                            myRole: data.role
+                            myRole: data.role,
+                            timerSeconds: data.timerSeconds || 0
                         });
                     }
                 }
@@ -291,6 +307,30 @@ export class PeerManager {
         this.send({
             type: MESSAGE_TYPES.SYNC,
             ...state
+        });
+    }
+
+    /**
+     * Send timer sync to opponent
+     * @param {number} remaining - Remaining seconds
+     * @param {string} player - Which player's timer (X or O)
+     */
+    sendTimerSync(remaining, player) {
+        this.send({
+            type: MESSAGE_TYPES.TIMER_SYNC,
+            remaining,
+            player
+        });
+    }
+
+    /**
+     * Send timer timeout notification
+     * @param {string} timedOutPlayer - Which player timed out
+     */
+    sendTimerTimeout(timedOutPlayer) {
+        this.send({
+            type: MESSAGE_TYPES.TIMER_TIMEOUT,
+            timedOutPlayer
         });
     }
 
