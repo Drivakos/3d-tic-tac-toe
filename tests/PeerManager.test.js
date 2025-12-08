@@ -56,6 +56,24 @@ describe('PeerManager utilities', () => {
             expect(MESSAGE_TYPES.RESET).toBe('reset');
             expect(MESSAGE_TYPES.SYNC).toBe('sync');
         });
+
+        it('should have full sync message type', () => {
+            expect(MESSAGE_TYPES.FULL_SYNC).toBe('full-sync');
+        });
+
+        it('should have timer-related message types', () => {
+            expect(MESSAGE_TYPES.TIMER_SYNC).toBe('timer-sync');
+            expect(MESSAGE_TYPES.TIMER_TIMEOUT).toBe('timer-timeout');
+        });
+
+        it('should have rematch-related message types', () => {
+            expect(MESSAGE_TYPES.REMATCH_REQUEST).toBe('rematch-request');
+            expect(MESSAGE_TYPES.REMATCH_RESPONSE).toBe('rematch-response');
+        });
+
+        it('should have chat message type', () => {
+            expect(MESSAGE_TYPES.CHAT).toBe('chat');
+        });
     });
 
     describe('checkWebRTCSupport', () => {
@@ -258,6 +276,158 @@ describe('PeerManager class', () => {
                 type: MESSAGE_TYPES.SYNC,
                 ...state
             });
+        });
+    });
+
+    describe('sendFullSync', () => {
+        it('should send full sync message with complete state', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            const state = {
+                gameState: {
+                    board: ['X', null, 'O', null, 'X', null, null, null, null],
+                    currentPlayer: PLAYERS.O,
+                    gameOver: false,
+                    winner: null,
+                    gameNumber: 2
+                },
+                scores: { X: 1, O: 1 },
+                timerSeconds: 10,
+                gameStarted: true
+            };
+            
+            peerManager.sendFullSync(state);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.FULL_SYNC,
+                ...state
+            });
+        });
+    });
+
+    describe('sendTimerSync', () => {
+        it('should send timer sync with remaining time and player', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendTimerSync(7.5, PLAYERS.X);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.TIMER_SYNC,
+                remaining: 7.5,
+                player: PLAYERS.X
+            });
+        });
+
+        it('should handle different players', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendTimerSync(3.2, PLAYERS.O);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.TIMER_SYNC,
+                remaining: 3.2,
+                player: PLAYERS.O
+            });
+        });
+    });
+
+    describe('sendTimerTimeout', () => {
+        it('should send timeout notification with timed out player', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendTimerTimeout(PLAYERS.X);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.TIMER_TIMEOUT,
+                timedOutPlayer: PLAYERS.X
+            });
+        });
+
+        it('should handle O player timeout', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendTimerTimeout(PLAYERS.O);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.TIMER_TIMEOUT,
+                timedOutPlayer: PLAYERS.O
+            });
+        });
+    });
+
+    describe('sendRematchRequest', () => {
+        it('should send rematch request with player number', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendRematchRequest(1);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.REMATCH_REQUEST,
+                playerNum: 1
+            });
+        });
+
+        it('should handle player 2 request', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendRematchRequest(2);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.REMATCH_REQUEST,
+                playerNum: 2
+            });
+        });
+    });
+
+    describe('sendRematchResponse', () => {
+        it('should send acceptance response', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendRematchResponse(true);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.REMATCH_RESPONSE,
+                accepted: true
+            });
+        });
+
+        it('should send decline response', () => {
+            const mockSend = vi.fn();
+            peerManager.connection = { open: true, send: mockSend };
+            
+            peerManager.sendRematchResponse(false);
+            
+            expect(mockSend).toHaveBeenCalledWith({
+                type: MESSAGE_TYPES.REMATCH_RESPONSE,
+                accepted: false
+            });
+        });
+    });
+
+    describe('setGameSettings', () => {
+        it('should store game settings', () => {
+            const settings = { timerSeconds: 10 };
+            peerManager.setGameSettings(settings);
+            expect(peerManager.gameSettings).toEqual(settings);
+        });
+
+        it('should handle empty settings', () => {
+            peerManager.setGameSettings({});
+            expect(peerManager.gameSettings).toEqual({});
+        });
+
+        it('should overwrite previous settings', () => {
+            peerManager.setGameSettings({ timerSeconds: 5 });
+            peerManager.setGameSettings({ timerSeconds: 10 });
+            expect(peerManager.gameSettings.timerSeconds).toBe(10);
         });
     });
 });

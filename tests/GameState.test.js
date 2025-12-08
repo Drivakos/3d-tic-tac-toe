@@ -209,6 +209,131 @@ describe('GameState', () => {
             expect(newState.getCurrentPlayer()).toBe(gameState.getCurrentPlayer());
             expect(newState.isGameOver()).toBe(gameState.isGameOver());
         });
+
+        it('should serialize game over state correctly', () => {
+            gameState.placePiece(0, PLAYERS.X);
+            gameState.placePiece(3, PLAYERS.X);
+            gameState.placePiece(6, PLAYERS.X);
+            gameState.setGameOver(PLAYERS.X, [0, 3, 6]);
+
+            const json = gameState.toJSON();
+            
+            const newState = new GameState();
+            newState.fromJSON(json);
+
+            expect(newState.isGameOver()).toBe(true);
+            expect(newState.winner).toBe(PLAYERS.X);
+            expect(newState.winningPattern).toEqual([0, 3, 6]);
+        });
+
+        it('should serialize and restore game number', () => {
+            gameState.reset(true); // game 1
+            gameState.reset(true); // game 2
+            gameState.reset(true); // game 3
+
+            const json = gameState.toJSON();
+            
+            const newState = new GameState();
+            newState.fromJSON(json);
+
+            expect(newState.gameNumber).toBe(3);
+            expect(newState.getPlayerAsX()).toBe(gameState.getPlayerAsX());
+        });
+
+        it('should handle empty board serialization', () => {
+            const json = gameState.toJSON();
+            
+            const newState = new GameState();
+            newState.fromJSON(json);
+
+            expect(newState.getBoard().every(cell => cell === null)).toBe(true);
+            expect(newState.getCurrentPlayer()).toBe(PLAYERS.X);
+            expect(newState.isGameOver()).toBe(false);
+        });
+
+        it('should handle partial JSON with missing fields', () => {
+            const partialJson = {
+                board: ['X', null, null, null, null, null, null, null, null],
+                currentPlayer: PLAYERS.O
+            };
+
+            const newState = new GameState();
+            newState.fromJSON(partialJson);
+
+            expect(newState.getBoard()[0]).toBe(PLAYERS.X);
+            expect(newState.getCurrentPlayer()).toBe(PLAYERS.O);
+        });
+    });
+
+    describe('getPlayerAsX edge cases', () => {
+        it('should correctly track who is X across many rounds', () => {
+            // P1 is X for even games, P2 is X for odd games
+            for (let i = 0; i < 10; i++) {
+                const expectedPlayer = i % 2 === 0 ? 1 : 2;
+                expect(gameState.getPlayerAsX()).toBe(expectedPlayer);
+                gameState.reset(true);
+            }
+        });
+
+        it('should reset player tracking when game number resets', () => {
+            gameState.reset(true); // game 1, P2 is X
+            gameState.reset(true); // game 2, P1 is X
+            expect(gameState.getPlayerAsX()).toBe(1);
+            
+            gameState.resetGameNumber();
+            gameState.reset(false);
+            expect(gameState.getPlayerAsX()).toBe(1); // Back to P1
+        });
+    });
+
+    describe('complex game scenarios', () => {
+        it('should handle a complete game to X win', () => {
+            // X wins with top row
+            gameState.placePiece(0, PLAYERS.X);
+            gameState.switchPlayer();
+            gameState.placePiece(3, PLAYERS.O);
+            gameState.switchPlayer();
+            gameState.placePiece(1, PLAYERS.X);
+            gameState.switchPlayer();
+            gameState.placePiece(4, PLAYERS.O);
+            gameState.switchPlayer();
+            gameState.placePiece(2, PLAYERS.X);
+
+            expect(gameState.getBoard()[0]).toBe(PLAYERS.X);
+            expect(gameState.getBoard()[1]).toBe(PLAYERS.X);
+            expect(gameState.getBoard()[2]).toBe(PLAYERS.X);
+        });
+
+        it('should handle reset after game over', () => {
+            gameState.placePiece(0, PLAYERS.X);
+            gameState.setGameOver(PLAYERS.X, [0, 1, 2]);
+            
+            expect(gameState.isGameOver()).toBe(true);
+            
+            gameState.reset(true);
+            
+            expect(gameState.isGameOver()).toBe(false);
+            expect(gameState.winner).toBe(null);
+            expect(gameState.winningPattern).toBe(null);
+            expect(gameState.getBoard().every(cell => cell === null)).toBe(true);
+        });
+
+        it('should maintain board integrity during many operations', () => {
+            // Fill board with alternating pieces
+            for (let i = 0; i < 9; i++) {
+                const player = i % 2 === 0 ? PLAYERS.X : PLAYERS.O;
+                expect(gameState.placePiece(i, player)).toBe(true);
+            }
+            
+            expect(gameState.isBoardFull()).toBe(true);
+            expect(gameState.getEmptyCells()).toHaveLength(0);
+            
+            // Verify each cell
+            expect(gameState.getCell(0)).toBe(PLAYERS.X);
+            expect(gameState.getCell(1)).toBe(PLAYERS.O);
+            expect(gameState.getCell(4)).toBe(PLAYERS.X);
+            expect(gameState.getCell(8)).toBe(PLAYERS.X);
+        });
     });
 });
 
