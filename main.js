@@ -37,7 +37,8 @@ class GameController {
     startGame(mode, difficulty = null) {
         this.mode = mode;
         this.scores = { X: 0, O: 0 };
-        this.gameState.reset();
+        this.gameState.resetGameNumber();
+        this.gameState.reset(false);
 
         // Setup AI controller if needed
         if (mode === GAME_MODES.AI && difficulty) {
@@ -60,7 +61,8 @@ class GameController {
         this.mode = GAME_MODES.PVP_REMOTE;
         this.peerManager = peerManager;
         this.scores = { X: 0, O: 0 };
-        this.gameState.reset();
+        this.gameState.resetGameNumber();
+        this.gameState.reset(false);
         this.aiController = null;
     }
 
@@ -96,14 +98,25 @@ class GameController {
 
     /**
      * Reset the current game
+     * @param {boolean} sendToRemote - Whether to sync with remote player
+     * @param {boolean} newRound - Whether this is a new round (alternates starting player)
      */
-    resetGame(sendToRemote = true) {
-        this.gameState.reset();
+    resetGame(sendToRemote = true, newRound = true) {
+        this.gameState.reset(newRound);
         
         // Sync reset with remote player
         if (this.isRemote() && sendToRemote && this.peerManager.isHost) {
             this.peerManager.sendReset();
         }
+    }
+
+    /**
+     * Full reset for new match (resets game number too)
+     */
+    resetMatch() {
+        this.gameState.resetGameNumber();
+        this.gameState.reset(false);
+        this.scores = { X: 0, O: 0 };
     }
 
     /**
@@ -612,8 +625,7 @@ function startRemoteGameUI(peerManager) {
 
 function goToMainMenu() {
     game.cleanup();
-    game.gameState.reset();
-    game.scores = { X: 0, O: 0 };
+    game.resetMatch();
     game.mode = null;
     
     document.getElementById('your-role').classList.add('hidden');
@@ -775,7 +787,8 @@ function handleRemoteMessage(data, peerManager) {
             break;
             
         case MESSAGE_TYPES.RESET:
-            game.resetGame(false);
+            // newRound=true to alternate starting player
+            game.resetGame(false, true);
             resetGameUI();
             break;
             

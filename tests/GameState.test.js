@@ -144,13 +144,42 @@ describe('GameState', () => {
             gameState.switchPlayer();
             gameState.setGameOver(PLAYERS.X, [0, 1, 2]);
 
-            // Reset
-            gameState.reset();
+            // Reset without new round
+            gameState.reset(false);
 
             expect(gameState.getBoard().every(cell => cell === null)).toBe(true);
             expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
             expect(gameState.isGameOver()).toBe(false);
             expect(gameState.winner).toBe(null);
+        });
+
+        it('should alternate starting player on new round', () => {
+            // Game 0: X starts
+            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
+            
+            // Game 1: O starts
+            gameState.reset(true);
+            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.O);
+            
+            // Game 2: X starts
+            gameState.reset(true);
+            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
+            
+            // Game 3: O starts
+            gameState.reset(true);
+            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.O);
+        });
+
+        it('should reset game number with resetGameNumber', () => {
+            gameState.reset(true); // game 1
+            gameState.reset(true); // game 2
+            expect(gameState.gameNumber).toBe(2);
+            
+            gameState.resetGameNumber();
+            expect(gameState.gameNumber).toBe(0);
+            
+            gameState.reset(false);
+            expect(gameState.getCurrentPlayer()).toBe(PLAYERS.X);
         });
     });
 

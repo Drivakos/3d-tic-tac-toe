@@ -6,18 +6,41 @@ import { PLAYERS, BOARD_SIZE } from './constants.js';
 
 export class GameState {
     constructor() {
+        this.gameNumber = 0;
         this.reset();
     }
 
     /**
      * Reset game state to initial values
+     * @param {boolean} newRound - If true, increment game number for alternating starts
      */
-    reset() {
+    reset(newRound = false) {
         this.board = Array(BOARD_SIZE).fill(null);
-        this.currentPlayer = PLAYERS.X;
         this.gameOver = false;
         this.winner = null;
         this.winningPattern = null;
+        
+        if (newRound) {
+            this.gameNumber++;
+        }
+        
+        // Alternate starting player: P1 (X) on odd games, P2 (O) on even games
+        this.currentPlayer = this.gameNumber % 2 === 0 ? PLAYERS.X : PLAYERS.O;
+    }
+
+    /**
+     * Reset game number (for new match/session)
+     */
+    resetGameNumber() {
+        this.gameNumber = 0;
+    }
+
+    /**
+     * Get the starting player for current game
+     * @returns {string}
+     */
+    getStartingPlayer() {
+        return this.gameNumber % 2 === 0 ? PLAYERS.X : PLAYERS.O;
     }
 
     /**
@@ -127,7 +150,8 @@ export class GameState {
             currentPlayer: this.currentPlayer,
             gameOver: this.gameOver,
             winner: this.winner,
-            winningPattern: this.winningPattern
+            winningPattern: this.winningPattern,
+            gameNumber: this.gameNumber
         };
     }
 
@@ -141,6 +165,9 @@ export class GameState {
         this.gameOver = state.gameOver;
         this.winner = state.winner;
         this.winningPattern = state.winningPattern;
+        if (state.gameNumber !== undefined) {
+            this.gameNumber = state.gameNumber;
+        }
     }
 }
 
