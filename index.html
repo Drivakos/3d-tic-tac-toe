@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Tic Tac Toe</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="container">
+        <canvas id="game-canvas"></canvas>
+        
+        <!-- Mode Selection Screen -->
+        <div id="mode-select-overlay">
+            <div id="mode-select-panel">
+                <h1>3D TIC TAC TOE</h1>
+                <p class="mode-subtitle">Select Game Mode</p>
+                
+                <div id="mode-buttons">
+                    <button class="mode-btn" data-mode="pvp">
+                        <span class="mode-icon">👥</span>
+                        <span class="mode-title">2 PLAYERS</span>
+                        <span class="mode-desc">Play with a friend</span>
+                    </button>
+                    
+                    <button class="mode-btn" data-mode="ai">
+                        <span class="mode-icon">🤖</span>
+                        <span class="mode-title">VS COMPUTER</span>
+                        <span class="mode-desc">Challenge the AI</span>
+                    </button>
+                </div>
+                
+                <div id="difficulty-select" class="hidden">
+                    <p class="difficulty-label">Select Difficulty</p>
+                    <div id="difficulty-buttons">
+                        <button class="difficulty-btn" data-difficulty="easy">EASY</button>
+                        <button class="difficulty-btn" data-difficulty="medium">MEDIUM</button>
+                        <button class="difficulty-btn" data-difficulty="hard">HARD</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Game UI -->
+        <div id="ui-overlay" class="hidden">
+            <h1>3D TIC TAC TOE</h1>
+            
+            <div id="status-panel">
+                <div id="mode-indicator">
+                    <span id="game-mode-label">2 PLAYERS</span>
+                </div>
+                <div id="player-indicator">
+                    <span class="player-label">Current Player</span>
+                    <span id="current-player" class="player-x">X</span>
+                </div>
+                <div id="score-board">
+                    <div class="score player-x-score">
+                        <span class="score-label">X</span>
+                        <span id="score-x">0</span>
+                    </div>
+                    <div class="score-divider">:</div>
+                    <div class="score player-o-score">
+                        <span class="score-label">O</span>
+                        <span id="score-o">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="message" class="hidden"></div>
+            
+            <div id="game-buttons">
+                <button id="reset-btn">NEW GAME</button>
+                <button id="menu-btn">MAIN MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
+
