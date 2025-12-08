@@ -574,6 +574,10 @@ const CELL_SIZE = 2;
 const BOARD_SIZE = CELL_SIZE * 3;
 const GAP = 0.1;
 
+// Platform accent materials (stored for dynamic color updates)
+let platformEdgeMaterial = null;
+let platformCornerMaterial = null;
+
 // Base platform with beveled edges (using multiple layers)
 function createPlatform() {
     const group = new THREE.Group();
@@ -595,20 +599,20 @@ function createPlatform() {
     
     // Bevel/edge trim (glowing accent)
     const edgeGeometry = new THREE.BoxGeometry(BOARD_SIZE + 0.85, 0.02, BOARD_SIZE + 0.85);
-    const edgeMaterial = new THREE.MeshStandardMaterial({
+    platformEdgeMaterial = new THREE.MeshStandardMaterial({
         color: 0x00f5ff,
         emissive: 0x00f5ff,
         emissiveIntensity: 0.15,
         metalness: 0.9,
         roughness: 0.2
     });
-    const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+    const edge = new THREE.Mesh(edgeGeometry, platformEdgeMaterial);
     edge.position.y = -0.12;
     group.add(edge);
     
     // Corner accents
     const cornerGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.3, 8);
-    const cornerMaterial = new THREE.MeshPhysicalMaterial({
+    platformCornerMaterial = new THREE.MeshPhysicalMaterial({
         color: 0x00f5ff,
         emissive: 0x00f5ff,
         emissiveIntensity: 0.3,
@@ -625,7 +629,7 @@ function createPlatform() {
     ];
     
     cornerPositions.forEach(pos => {
-        const corner = new THREE.Mesh(cornerGeometry, cornerMaterial);
+        const corner = new THREE.Mesh(cornerGeometry, platformCornerMaterial);
         corner.position.set(...pos);
         corner.castShadow = true;
         group.add(corner);
@@ -998,6 +1002,279 @@ const TIMER_SYNC_INTERVAL = 500; // Throttle sync to every 500ms
 const TIMER_CRITICAL_SECONDS = 2;
 const TIMER_WARNING_THRESHOLD = 0.4; // 40% remaining
 
+// Stage color thresholds
+const STAGE_COLOR_THRESHOLDS = {
+    WARNING: 0.6,   // Below 60% - start transitioning to yellow
+    CRITICAL: 0.4,  // Below 40% - transition to orange
+    DANGER: 0.2     // Below 20% - transition to red
+};
+
+// Stage colors for timer urgency (stored as RGB for lerping)
+const STAGE_COLORS = {
+    NORMAL: {
+        fog: new THREE.Color(0x050510),
+        ground: new THREE.Color(0x050508),
+        ambient: new THREE.Color(0x1a1a2e),
+        platformAccent: new THREE.Color(0x00f5ff),  // Cyan
+        gridLine: new THREE.Color(0x00f5ff),
+        accentMultiplier: 1.0
+    },
+    WARNING: {  // Yellow-ish
+        fog: new THREE.Color(0x121005),
+        ground: new THREE.Color(0x0a0805),
+        ambient: new THREE.Color(0x2e2a1a),
+        platformAccent: new THREE.Color(0xffdd00),  // Yellow
+        gridLine: new THREE.Color(0xffdd00),
+        accentMultiplier: 0.6
+    },
+    CRITICAL: {  // Orange
+        fog: new THREE.Color(0x180800),
+        ground: new THREE.Color(0x100600),
+        ambient: new THREE.Color(0x2e150a),
+        platformAccent: new THREE.Color(0xff8800),  // Orange
+        gridLine: new THREE.Color(0xff8800),
+        accentMultiplier: 0.3
+    },
+    DANGER: {  // Red
+        fog: new THREE.Color(0x1a0000),
+        ground: new THREE.Color(0x120000),
+        ambient: new THREE.Color(0x2e0808),
+        platformAccent: new THREE.Color(0xff2200),  // Red
+        gridLine: new THREE.Color(0xff2200),
+        accentMultiplier: 0.15
+    }
+};
+
+// Store original stage colors for resetting
+const originalStageColors = {
+    fog: new THREE.Color(0x050510),
+    ground: new THREE.Color(0x050508),
+    ambient: new THREE.Color(0x1a1a2e),
+    platformAccent: new THREE.Color(0x00f5ff),
+    gridLine: new THREE.Color(0x00f5ff),
+    cyanIntensity: 1.5,
+    magentaIntensity: 1.2
+};
+
+// Current stage color state
+let currentStageColorProgress = 1.0;
+
+/**
+ * Lerp helper for smooth color transitions
+ */
+function lerpColor(color1, color2, t) {
+    const result = new THREE.Color();
+    result.r = color1.r + (color2.r - color1.r) * t;
+    result.g = color1.g + (color2.g - color1.g) * t;
+    result.b = color1.b + (color2.b - color1.b) * t;
+    return result;
+}
+
+/**
+ * Update stage colors based on timer progress
+ * @param {number} progress - Timer progress from 0 to 1 (1 = full time, 0 = no time)
+ */
+function updateStageColors(progress) {
+    currentStageColorProgress = progress;
+    
+    let targetColors;
+    let fromColors;
+    let lerpT;
+    
+    if (progress > STAGE_COLOR_THRESHOLDS.WARNING) {
+        // Normal state (60-100%)
+        const range = 1.0 - STAGE_COLOR_THRESHOLDS.WARNING;
+        lerpT = (progress - STAGE_COLOR_THRESHOLDS.WARNING) / range;
+        fromColors = STAGE_COLORS.WARNING;
+        targetColors = STAGE_COLORS.NORMAL;
+    } else if (progress > STAGE_COLOR_THRESHOLDS.CRITICAL) {
+        // Warning state (40-60%) - transitioning to yellow
+        const range = STAGE_COLOR_THRESHOLDS.WARNING - STAGE_COLOR_THRESHOLDS.CRITICAL;
+        lerpT = (progress - STAGE_COLOR_THRESHOLDS.CRITICAL) / range;
+        fromColors = STAGE_COLORS.CRITICAL;
+        targetColors = STAGE_COLORS.WARNING;
+    } else if (progress > STAGE_COLOR_THRESHOLDS.DANGER) {
+        // Critical state (20-40%) - transitioning to orange
+        const range = STAGE_COLOR_THRESHOLDS.CRITICAL - STAGE_COLOR_THRESHOLDS.DANGER;
+        lerpT = (progress - STAGE_COLOR_THRESHOLDS.DANGER) / range;
+        fromColors = STAGE_COLORS.DANGER;
+        targetColors = STAGE_COLORS.CRITICAL;
+    } else {
+        // Danger state (<20%) - red
+        const range = STAGE_COLOR_THRESHOLDS.DANGER;
+        lerpT = Math.max(0, progress / range);
+        fromColors = { 
+            fog: new THREE.Color(0x250000), 
+            ground: new THREE.Color(0x180000),
+            ambient: new THREE.Color(0x350505),
+            platformAccent: new THREE.Color(0xff0000),  // Deep red
+            gridLine: new THREE.Color(0xff0000),
+            accentMultiplier: 0.05
+        };
+        targetColors = STAGE_COLORS.DANGER;
+    }
+    
+    // Lerp all colors
+    const fogColor = lerpColor(fromColors.fog, targetColors.fog, lerpT);
+    const groundColor = lerpColor(fromColors.ground, targetColors.ground, lerpT);
+    const ambientColor = lerpColor(fromColors.ambient, targetColors.ambient, lerpT);
+    const platformAccentColor = lerpColor(fromColors.platformAccent, targetColors.platformAccent, lerpT);
+    const gridLineColor = lerpColor(fromColors.gridLine, targetColors.gridLine, lerpT);
+    const accentMult = fromColors.accentMultiplier + 
+        (targetColors.accentMultiplier - fromColors.accentMultiplier) * lerpT;
+    
+    // Apply to scene
+    scene.fog.color.copy(fogColor);
+    materials.ground.color.copy(groundColor);
+    ambientLight.color.copy(ambientColor);
+    
+    // Update platform edge and corner materials
+    if (platformEdgeMaterial) {
+        platformEdgeMaterial.color.copy(platformAccentColor);
+        platformEdgeMaterial.emissive.copy(platformAccentColor);
+    }
+    if (platformCornerMaterial) {
+        platformCornerMaterial.color.copy(platformAccentColor);
+        platformCornerMaterial.emissive.copy(platformAccentColor);
+    }
+    
+    // Update grid lines
+    materials.gridLine.color.copy(gridLineColor);
+    materials.gridLine.emissive.copy(gridLineColor);
+    
+    // Also update cloned grid line materials in the scene
+    if (gridLines) {
+        gridLines.children.forEach(line => {
+            if (line.material) {
+                line.material.color.copy(gridLineColor);
+                line.material.emissive.copy(gridLineColor);
+            }
+        });
+    }
+    
+    // Modulate accent lights (base intensity × multiplier)
+    cyanLight.intensity = originalStageColors.cyanIntensity * accentMult;
+    magentaLight.intensity = originalStageColors.magentaIntensity * accentMult;
+    
+    // Add urgency glow effect when critical
+    if (progress < STAGE_COLOR_THRESHOLDS.CRITICAL) {
+        const urgencyIntensity = 1.0 - (progress / STAGE_COLOR_THRESHOLDS.CRITICAL);
+        
+        // Add orange/red rim to the ambient
+        const urgencyColor = progress < STAGE_COLOR_THRESHOLDS.DANGER 
+            ? new THREE.Color(0xff2200) 
+            : new THREE.Color(0xff6600);
+        
+        // Pulse effect for danger zone
+        if (progress < STAGE_COLOR_THRESHOLDS.DANGER) {
+            const pulseIntensity = 0.3 + Math.sin(Date.now() * 0.01) * 0.2;
+            fillLight.color.copy(urgencyColor);
+            fillLight.intensity = pulseIntensity * urgencyIntensity;
+            
+            // Pulse the platform edge emissive intensity in danger zone
+            const edgePulse = 0.3 + Math.sin(Date.now() * 0.015) * 0.25;
+            if (platformEdgeMaterial) {
+                platformEdgeMaterial.emissiveIntensity = edgePulse;
+            }
+            if (platformCornerMaterial) {
+                platformCornerMaterial.emissiveIntensity = 0.5 + Math.sin(Date.now() * 0.015) * 0.3;
+            }
+            
+            // Pulse grid lines too
+            const gridPulse = 0.5 + Math.sin(Date.now() * 0.012) * 0.3;
+            materials.gridLine.emissiveIntensity = gridPulse;
+            if (gridLines) {
+                gridLines.children.forEach(line => {
+                    if (line.material) {
+                        line.material.emissiveIntensity = gridPulse;
+                    }
+                });
+            }
+        } else {
+            fillLight.color.set(0xff6600);
+            fillLight.intensity = 0.2 * urgencyIntensity;
+            
+            // Normal emissive intensity in warning/critical but not danger
+            if (platformEdgeMaterial) {
+                platformEdgeMaterial.emissiveIntensity = 0.15;
+            }
+            if (platformCornerMaterial) {
+                platformCornerMaterial.emissiveIntensity = 0.3;
+            }
+            materials.gridLine.emissiveIntensity = 0.4;
+            if (gridLines) {
+                gridLines.children.forEach(line => {
+                    if (line.material) {
+                        line.material.emissiveIntensity = 0.4;
+                    }
+                });
+            }
+        }
+    } else {
+        // Reset fill light
+        fillLight.color.set(0x4466aa);
+        fillLight.intensity = 0.4;
+        
+        // Reset emissive intensities
+        if (platformEdgeMaterial) {
+            platformEdgeMaterial.emissiveIntensity = 0.15;
+        }
+        if (platformCornerMaterial) {
+            platformCornerMaterial.emissiveIntensity = 0.3;
+        }
+        materials.gridLine.emissiveIntensity = 0.4;
+        if (gridLines) {
+            gridLines.children.forEach(line => {
+                if (line.material) {
+                    line.material.emissiveIntensity = 0.4;
+                }
+            });
+        }
+    }
+}
+
+/**
+ * Reset stage colors to normal state
+ */
+function resetStageColors() {
+    currentStageColorProgress = 1.0;
+    
+    scene.fog.color.copy(originalStageColors.fog);
+    materials.ground.color.copy(originalStageColors.ground);
+    ambientLight.color.copy(originalStageColors.ambient);
+    cyanLight.intensity = originalStageColors.cyanIntensity;
+    magentaLight.intensity = originalStageColors.magentaIntensity;
+    fillLight.color.set(0x4466aa);
+    fillLight.intensity = 0.4;
+    
+    // Reset platform accent colors to original cyan
+    if (platformEdgeMaterial) {
+        platformEdgeMaterial.color.copy(originalStageColors.platformAccent);
+        platformEdgeMaterial.emissive.copy(originalStageColors.platformAccent);
+        platformEdgeMaterial.emissiveIntensity = 0.15;
+    }
+    if (platformCornerMaterial) {
+        platformCornerMaterial.color.copy(originalStageColors.platformAccent);
+        platformCornerMaterial.emissive.copy(originalStageColors.platformAccent);
+        platformCornerMaterial.emissiveIntensity = 0.3;
+    }
+    
+    // Reset grid lines to original cyan
+    materials.gridLine.color.copy(originalStageColors.gridLine);
+    materials.gridLine.emissive.copy(originalStageColors.gridLine);
+    materials.gridLine.emissiveIntensity = 0.4;
+    
+    if (gridLines) {
+        gridLines.children.forEach(line => {
+            if (line.material) {
+                line.material.color.copy(originalStageColors.gridLine);
+                line.material.emissive.copy(originalStageColors.gridLine);
+                line.material.emissiveIntensity = 0.4;
+            }
+        });
+    }
+}
+
 function initializePlayerTimers(total) {
     playerTimers.X = { remaining: total, total };
     playerTimers.O = { remaining: total, total };
@@ -1008,6 +1285,7 @@ function updateTimerUI(remaining, total) {
     
     if (!game.hasTimer()) {
         timersContainer.classList.add('hidden');
+        resetStageColors();
         return;
     }
     
@@ -1017,6 +1295,10 @@ function updateTimerUI(remaining, total) {
     const currentPlayer = game.gameState.getCurrentPlayer();
     playerTimers[currentPlayer].remaining = remaining;
     playerTimers[currentPlayer].total = total;
+    
+    // Update stage colors based on current player's time
+    const progress = total > 0 ? remaining / total : 1;
+    updateStageColors(progress);
     
     // Sync timer to remote opponent (throttled to avoid network flooding)
     const now = Date.now();
@@ -1067,11 +1349,15 @@ function updatePlayerTimerDisplay(timerId, player) {
 
 function hideTimerUI() {
     document.getElementById('timers-container').classList.add('hidden');
+    resetStageColors();
 }
 
 function resetTimerDisplays() {
     const total = game.timerSeconds;
     initializePlayerTimers(total);
+    
+    // Reset stage colors to normal
+    resetStageColors();
     
     const timersContainer = document.getElementById('timers-container');
     
@@ -1968,9 +2254,14 @@ function animate() {
     const hue = 0.5 + Math.sin(time * 0.5) * 0.05; // Cyan range
     particleMaterial.color.setHSL(hue, 1, 0.5);
     
-    // Animate accent lights subtly
-    cyanLight.intensity = 1.3 + Math.sin(time * 1.5) * 0.3;
-    magentaLight.intensity = 1.0 + Math.sin(time * 1.2 + 1) * 0.3;
+    // Animate accent lights subtly (respecting stage color state)
+    // Only apply normal animation when timer is not active or in normal state
+    if (!game.hasTimer() || currentStageColorProgress > STAGE_COLOR_THRESHOLDS.WARNING) {
+        cyanLight.intensity = 1.3 + Math.sin(time * 1.5) * 0.3;
+        magentaLight.intensity = 1.0 + Math.sin(time * 1.2 + 1) * 0.3;
+    }
+    // When timer is active and in warning/critical state, use the stage color intensities
+    // (these are already set by updateStageColors)
     
     // Animate corner accents on platform (if they exist)
     if (platform && platform.children) {
