@@ -1068,6 +1068,7 @@ async function createRoom() {
         };
         
         peerManager.onDisconnect = () => {
+            hideRematchModals();
             if (!game.gameState.isGameOver()) {
                 showMessage('OPPONENT DISCONNECTED');
                 game.gameState.setGameOver();
@@ -1138,6 +1139,7 @@ async function joinRoom(roomCode) {
         };
         
         peerManager.onDisconnect = () => {
+            hideRematchModals();
             if (!game.gameState.isGameOver()) {
                 showMessage('OPPONENT DISCONNECTED');
                 game.gameState.setGameOver();
@@ -1246,6 +1248,9 @@ let pendingRematch = false;
 function requestRematch() {
     if (!game.isRemote() || !game.peerManager) return;
     
+    // Prevent duplicate requests
+    if (pendingRematch) return;
+    
     // Show waiting modal
     pendingRematch = true;
     document.getElementById('waiting-rematch-modal').classList.remove('hidden');
@@ -1256,6 +1261,16 @@ function requestRematch() {
 }
 
 function showRematchRequest(playerNum) {
+    // If we already sent a request, both players want to play - auto-accept
+    if (pendingRematch) {
+        hideRematchModals();
+        if (game.peerManager) {
+            game.peerManager.sendRematchResponse(true);
+        }
+        startRematchGame();
+        return;
+    }
+    
     const message = `P${playerNum} has requested to play again!`;
     document.getElementById('rematch-message').textContent = message;
     document.getElementById('rematch-modal').classList.remove('hidden');
@@ -1317,6 +1332,10 @@ function startRematchGame() {
 }
 
 function cancelRematchRequest() {
+    // Notify opponent that request was cancelled
+    if (pendingRematch && game.peerManager) {
+        game.peerManager.sendRematchResponse(false);
+    }
     hideRematchModals();
 }
 
@@ -1324,6 +1343,31 @@ function cancelRematchRequest() {
 document.getElementById('accept-rematch-btn').addEventListener('click', acceptRematch);
 document.getElementById('decline-rematch-btn').addEventListener('click', declineRematch);
 document.getElementById('cancel-rematch-btn').addEventListener('click', cancelRematchRequest);
+
+// Keyboard shortcuts for rematch modals
+document.addEventListener('keydown', (e) => {
+    const rematchModal = document.getElementById('rematch-modal');
+    const waitingModal = document.getElementById('waiting-rematch-modal');
+    
+    // Handle rematch request modal (Enter = Accept, Escape = Decline)
+    if (!rematchModal.classList.contains('hidden')) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            acceptRematch();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            declineRematch();
+        }
+    }
+    
+    // Handle waiting modal (Escape = Cancel)
+    if (!waitingModal.classList.contains('hidden')) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelRematchRequest();
+        }
+    }
+});
 
 // ============================================
 // INTERACTION
