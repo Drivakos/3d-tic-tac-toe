@@ -350,12 +350,16 @@ camera.lookAt(0, 0, 0);
 const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
-    alpha: true
+    alpha: true,
+    powerPreference: 'high-performance'
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 // Orbit Controls
 const controls = new OrbitControls(camera, canvas);
@@ -369,64 +373,196 @@ controls.maxPolarAngle = Math.PI / 2.2;
 // ============================================
 // LIGHTING
 // ============================================
-const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+// Subtle ambient for base illumination
+const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.4);
 scene.add(ambientLight);
 
-const mainLight = new THREE.DirectionalLight(0xffffff, 1);
-mainLight.position.set(5, 10, 7);
+// Hemisphere light for natural sky/ground color variation
+const hemiLight = new THREE.HemisphereLight(0x0a0a1a, 0x000000, 0.3);
+scene.add(hemiLight);
+
+// Main directional light with improved shadows
+const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+mainLight.position.set(5, 12, 7);
 mainLight.castShadow = true;
-mainLight.shadow.mapSize.width = 2048;
-mainLight.shadow.mapSize.height = 2048;
+mainLight.shadow.mapSize.width = 4096;
+mainLight.shadow.mapSize.height = 4096;
 mainLight.shadow.camera.near = 0.5;
 mainLight.shadow.camera.far = 50;
+mainLight.shadow.camera.left = -10;
+mainLight.shadow.camera.right = 10;
+mainLight.shadow.camera.top = 10;
+mainLight.shadow.camera.bottom = -10;
+mainLight.shadow.bias = -0.0001;
+mainLight.shadow.normalBias = 0.02;
+mainLight.shadow.radius = 2;
 scene.add(mainLight);
 
-const cyanLight = new THREE.PointLight(0x00f5ff, 0.8, 20);
-cyanLight.position.set(-5, 5, -5);
+// Secondary fill light (softer, from opposite side)
+const fillLight = new THREE.DirectionalLight(0x4466aa, 0.4);
+fillLight.position.set(-5, 8, -5);
+scene.add(fillLight);
+
+// Cyan accent light with shadows
+const cyanLight = new THREE.PointLight(0x00f5ff, 1.5, 25);
+cyanLight.position.set(-4, 4, -4);
+cyanLight.castShadow = true;
+cyanLight.shadow.mapSize.width = 1024;
+cyanLight.shadow.mapSize.height = 1024;
+cyanLight.shadow.bias = -0.001;
 scene.add(cyanLight);
 
-const magentaLight = new THREE.PointLight(0xff00aa, 0.6, 20);
-magentaLight.position.set(5, 5, 5);
+// Magenta accent light with shadows
+const magentaLight = new THREE.PointLight(0xff00aa, 1.2, 25);
+magentaLight.position.set(4, 4, 4);
+magentaLight.castShadow = true;
+magentaLight.shadow.mapSize.width = 1024;
+magentaLight.shadow.mapSize.height = 1024;
+magentaLight.shadow.bias = -0.001;
 scene.add(magentaLight);
+
+// Rim light from behind for edge definition
+const rimLight = new THREE.SpotLight(0x6644ff, 0.8, 30, Math.PI / 6, 0.5);
+rimLight.position.set(0, 8, -8);
+rimLight.target.position.set(0, 0, 0);
+scene.add(rimLight);
+scene.add(rimLight.target);
 
 // ============================================
 // MATERIALS
 // ============================================
+// Create a simple environment map for reflections
+const envMapTexture = new THREE.CubeTextureLoader().load([
+    // px, nx, py, ny, pz, nz - using data URLs for small gradient colors
+    createGradientDataURL(0x0a0a1a, 0x00f5ff),
+    createGradientDataURL(0x0a0a1a, 0xff00aa),
+    createGradientDataURL(0x1a1a3a, 0x2a2a4a),
+    createGradientDataURL(0x000000, 0x0a0a1a),
+    createGradientDataURL(0x0a0a1a, 0x00f5ff),
+    createGradientDataURL(0x0a0a1a, 0xff00aa)
+]);
+
+// Helper to create simple gradient images for env map
+function createGradientDataURL(color1, color2) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 64, 64);
+    gradient.addColorStop(0, `#${color1.toString(16).padStart(6, '0')}`);
+    gradient.addColorStop(1, `#${color2.toString(16).padStart(6, '0')}`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    return canvas.toDataURL();
+}
+
+// Custom procedural env map
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+
+// Create scene environment from gradient
+const envScene = new THREE.Scene();
+const envGeometry = new THREE.SphereGeometry(50, 32, 32);
+const envMaterial = new THREE.MeshBasicMaterial({
+    side: THREE.BackSide,
+    vertexColors: true
+});
+
+// Add vertex colors for gradient effect
+const colors = [];
+const positions = envGeometry.attributes.position;
+for (let i = 0; i < positions.count; i++) {
+    const y = positions.getY(i);
+    const t = (y + 50) / 100;
+    // Dark purple at bottom, dark blue at top
+    colors.push(
+        THREE.MathUtils.lerp(0.02, 0.04, t),
+        THREE.MathUtils.lerp(0.02, 0.03, t),
+        THREE.MathUtils.lerp(0.05, 0.12, t)
+    );
+}
+envGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+const envMesh = new THREE.Mesh(envGeometry, envMaterial);
+envScene.add(envMesh);
+
+const envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
+scene.environment = envMap;
+
 const materials = {
     board: new THREE.MeshStandardMaterial({
-        color: 0x1a1a2e,
-        metalness: 0.3,
-        roughness: 0.7
+        color: 0x12121f,
+        metalness: 0.6,
+        roughness: 0.35,
+        envMapIntensity: 0.8
+    }),
+    boardTop: new THREE.MeshStandardMaterial({
+        color: 0x0d0d18,
+        metalness: 0.7,
+        roughness: 0.25,
+        envMapIntensity: 1.0
     }),
     gridLine: new THREE.MeshStandardMaterial({
         color: 0x00f5ff,
         emissive: 0x00f5ff,
-        emissiveIntensity: 0.3,
-        metalness: 0.8,
-        roughness: 0.2
+        emissiveIntensity: 0.4,
+        metalness: 0.95,
+        roughness: 0.05,
+        envMapIntensity: 1.5
     }),
-    playerX: new THREE.MeshStandardMaterial({
+    playerX: new THREE.MeshPhysicalMaterial({
         color: 0x00f5ff,
         emissive: 0x00f5ff,
-        emissiveIntensity: 0.5,
-        metalness: 0.9,
-        roughness: 0.1
+        emissiveIntensity: 0.6,
+        metalness: 1.0,
+        roughness: 0.08,
+        clearcoat: 0.8,
+        clearcoatRoughness: 0.1,
+        envMapIntensity: 2.0,
+        reflectivity: 1.0
     }),
-    playerO: new THREE.MeshStandardMaterial({
+    playerO: new THREE.MeshPhysicalMaterial({
         color: 0xff00aa,
         emissive: 0xff00aa,
-        emissiveIntensity: 0.5,
-        metalness: 0.9,
-        roughness: 0.1
+        emissiveIntensity: 0.6,
+        metalness: 1.0,
+        roughness: 0.08,
+        clearcoat: 0.8,
+        clearcoatRoughness: 0.1,
+        envMapIntensity: 2.0,
+        reflectivity: 1.0
     }),
-    winHighlight: new THREE.MeshStandardMaterial({
+    winHighlight: new THREE.MeshPhysicalMaterial({
         color: 0xffd700,
         emissive: 0xffd700,
-        emissiveIntensity: 0.8,
+        emissiveIntensity: 1.0,
+        metalness: 1.0,
+        roughness: 0.05,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.05,
+        envMapIntensity: 2.5,
+        reflectivity: 1.0
+    }),
+    ground: new THREE.MeshStandardMaterial({
+        color: 0x050508,
         metalness: 0.9,
-        roughness: 0.1
+        roughness: 0.15,
+        envMapIntensity: 0.5
     })
 };
+
+// ============================================
+// SCENE ATMOSPHERE
+// ============================================
+// Add subtle fog for depth
+scene.fog = new THREE.FogExp2(0x050510, 0.025);
+
+// Ground plane for reflections
+const groundGeometry = new THREE.PlaneGeometry(100, 100);
+const groundPlane = new THREE.Mesh(groundGeometry, materials.ground);
+groundPlane.rotation.x = -Math.PI / 2;
+groundPlane.position.y = -0.5;
+groundPlane.receiveShadow = true;
+scene.add(groundPlane);
 
 // ============================================
 // GAME BOARD
@@ -438,31 +574,98 @@ const CELL_SIZE = 2;
 const BOARD_SIZE = CELL_SIZE * 3;
 const GAP = 0.1;
 
-// Base platform
-const platformGeometry = new THREE.BoxGeometry(BOARD_SIZE + 1, 0.3, BOARD_SIZE + 1);
-const platform = new THREE.Mesh(platformGeometry, materials.board);
-platform.position.y = -0.2;
-platform.receiveShadow = true;
+// Base platform with beveled edges (using multiple layers)
+function createPlatform() {
+    const group = new THREE.Group();
+    
+    // Main platform body
+    const mainGeometry = new THREE.BoxGeometry(BOARD_SIZE + 0.8, 0.25, BOARD_SIZE + 0.8);
+    const main = new THREE.Mesh(mainGeometry, materials.board);
+    main.position.y = -0.25;
+    main.castShadow = true;
+    main.receiveShadow = true;
+    group.add(main);
+    
+    // Top surface (slightly smaller, darker)
+    const topGeometry = new THREE.BoxGeometry(BOARD_SIZE + 0.6, 0.08, BOARD_SIZE + 0.6);
+    const top = new THREE.Mesh(topGeometry, materials.boardTop);
+    top.position.y = -0.08;
+    top.receiveShadow = true;
+    group.add(top);
+    
+    // Bevel/edge trim (glowing accent)
+    const edgeGeometry = new THREE.BoxGeometry(BOARD_SIZE + 0.85, 0.02, BOARD_SIZE + 0.85);
+    const edgeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x00f5ff,
+        emissive: 0x00f5ff,
+        emissiveIntensity: 0.15,
+        metalness: 0.9,
+        roughness: 0.2
+    });
+    const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+    edge.position.y = -0.12;
+    group.add(edge);
+    
+    // Corner accents
+    const cornerGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.3, 8);
+    const cornerMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0x00f5ff,
+        emissive: 0x00f5ff,
+        emissiveIntensity: 0.3,
+        metalness: 1.0,
+        roughness: 0.1,
+        clearcoat: 0.5
+    });
+    
+    const cornerPositions = [
+        [-BOARD_SIZE/2 - 0.3, -0.2, -BOARD_SIZE/2 - 0.3],
+        [BOARD_SIZE/2 + 0.3, -0.2, -BOARD_SIZE/2 - 0.3],
+        [-BOARD_SIZE/2 - 0.3, -0.2, BOARD_SIZE/2 + 0.3],
+        [BOARD_SIZE/2 + 0.3, -0.2, BOARD_SIZE/2 + 0.3]
+    ];
+    
+    cornerPositions.forEach(pos => {
+        const corner = new THREE.Mesh(cornerGeometry, cornerMaterial);
+        corner.position.set(...pos);
+        corner.castShadow = true;
+        group.add(corner);
+    });
+    
+    return group;
+}
+
+const platform = createPlatform();
 boardGroup.add(platform);
 
-// Grid lines
+// Grid lines with improved geometry
 function createGridLines() {
-    const lineGeometry = new THREE.BoxGeometry(0.08, 0.15, BOARD_SIZE - 0.2);
+    const gridGroup = new THREE.Group();
     
+    // Vertical lines
+    const vLineGeometry = new THREE.BoxGeometry(0.06, 0.12, BOARD_SIZE - 0.3);
     for (let i = -1; i <= 1; i += 2) {
-        const line = new THREE.Mesh(lineGeometry, materials.gridLine);
-        line.position.set(i * (CELL_SIZE / 2 + GAP / 2), 0.05, 0);
-        boardGroup.add(line);
+        const line = new THREE.Mesh(vLineGeometry, materials.gridLine.clone());
+        line.position.set(i * (CELL_SIZE / 2 + GAP / 2), 0.02, 0);
+        line.castShadow = true;
+        line.receiveShadow = true;
+        gridGroup.add(line);
     }
     
-    const hLineGeometry = new THREE.BoxGeometry(BOARD_SIZE - 0.2, 0.15, 0.08);
+    // Horizontal lines
+    const hLineGeometry = new THREE.BoxGeometry(BOARD_SIZE - 0.3, 0.12, 0.06);
     for (let i = -1; i <= 1; i += 2) {
-        const line = new THREE.Mesh(hLineGeometry, materials.gridLine);
-        line.position.set(0, 0.05, i * (CELL_SIZE / 2 + GAP / 2));
-        boardGroup.add(line);
+        const line = new THREE.Mesh(hLineGeometry, materials.gridLine.clone());
+        line.position.set(0, 0.02, i * (CELL_SIZE / 2 + GAP / 2));
+        line.castShadow = true;
+        line.receiveShadow = true;
+        gridGroup.add(line);
     }
+    
+    return gridGroup;
 }
-createGridLines();
+
+const gridLines = createGridLines();
+boardGroup.add(gridLines);
 
 // Click targets
 const clickTargets = [];
@@ -488,23 +691,127 @@ for (let i = 0; i < 9; i++) {
 }
 
 // ============================================
+// AMBIENT PARTICLES
+// ============================================
+const particleCount = 150;
+const particleGeometry = new THREE.BufferGeometry();
+const particlePositions = new Float32Array(particleCount * 3);
+const particleSizes = new Float32Array(particleCount);
+
+for (let i = 0; i < particleCount; i++) {
+    particlePositions[i * 3] = (Math.random() - 0.5) * 30;
+    particlePositions[i * 3 + 1] = Math.random() * 15;
+    particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 30;
+    particleSizes[i] = Math.random() * 0.05 + 0.02;
+}
+
+particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+
+const particleMaterial = new THREE.PointsMaterial({
+    color: 0x00f5ff,
+    size: 0.08,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true
+});
+
+const particles = new THREE.Points(particleGeometry, particleMaterial);
+scene.add(particles);
+
+// ============================================
 // GAME PIECES
 // ============================================
 const pieces = [];
 
 function createX(cellIndex) {
     const group = new THREE.Group();
-    const barGeometry = new THREE.BoxGeometry(0.15, 0.3, 1.4);
     
-    const bar1 = new THREE.Mesh(barGeometry, materials.playerX.clone());
-    bar1.rotation.y = Math.PI / 4;
-    bar1.castShadow = true;
+    // Create X using two crossed rounded cylinders for proper shadows and reflections
+    const armLength = 1.1;      // Total length of each arm
+    const tubeRadius = 0.1;     // Same tube radius as the O's torus
+    const radialSegments = 24;  // Smooth curved surface for nice reflections
+    const capSegments = 12;     // Rounded end caps
     
-    const bar2 = new THREE.Mesh(barGeometry, materials.playerX.clone());
-    bar2.rotation.y = -Math.PI / 4;
-    bar2.castShadow = true;
+    // Create a capsule-like geometry (cylinder with hemisphere caps)
+    function createRoundedArm() {
+        const armGroup = new THREE.Group();
+        
+        // Main cylinder body
+        const cylinderGeometry = new THREE.CylinderGeometry(
+            tubeRadius, tubeRadius, armLength - tubeRadius * 2, radialSegments
+        );
+        const cylinder = new THREE.Mesh(cylinderGeometry, materials.playerX.clone());
+        cylinder.castShadow = true;
+        cylinder.receiveShadow = true;
+        armGroup.add(cylinder);
+        
+        // Top hemisphere cap
+        const topCapGeometry = new THREE.SphereGeometry(
+            tubeRadius, radialSegments, capSegments, 0, Math.PI * 2, 0, Math.PI / 2
+        );
+        const topCap = new THREE.Mesh(topCapGeometry, materials.playerX.clone());
+        topCap.position.y = (armLength - tubeRadius * 2) / 2;
+        topCap.castShadow = true;
+        topCap.receiveShadow = true;
+        armGroup.add(topCap);
+        
+        // Bottom hemisphere cap
+        const bottomCapGeometry = new THREE.SphereGeometry(
+            tubeRadius, radialSegments, capSegments, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2
+        );
+        const bottomCap = new THREE.Mesh(bottomCapGeometry, materials.playerX.clone());
+        bottomCap.position.y = -(armLength - tubeRadius * 2) / 2;
+        bottomCap.castShadow = true;
+        bottomCap.receiveShadow = true;
+        armGroup.add(bottomCap);
+        
+        return armGroup;
+    }
     
-    group.add(bar1, bar2);
+    // First diagonal arm (top-left to bottom-right)
+    const arm1 = createRoundedArm();
+    arm1.rotation.z = Math.PI / 4;  // 45 degrees
+    arm1.rotation.x = Math.PI / 2;  // Lay flat
+    group.add(arm1);
+    
+    // Second diagonal arm (top-right to bottom-left)
+    const arm2 = createRoundedArm();
+    arm2.rotation.z = -Math.PI / 4; // -45 degrees
+    arm2.rotation.x = Math.PI / 2;  // Lay flat
+    group.add(arm2);
+    
+    // Add subtle X-shaped glow using two crossed rounded rectangles
+    const glowArmLength = armLength * 0.85;  // Slightly smaller than actual X
+    const glowArmWidth = tubeRadius * 2.5;   // Slightly wider than tube for soft glow
+    
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00f5ff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide
+    });
+    
+    // First glow arm (diagonal)
+    const glowArm1Geometry = new THREE.PlaneGeometry(glowArmWidth, glowArmLength);
+    const glowArm1 = new THREE.Mesh(glowArm1Geometry, glowMaterial);
+    glowArm1.rotation.x = -Math.PI / 2;
+    glowArm1.rotation.z = Math.PI / 4;
+    glowArm1.position.y = -0.08;
+    glowArm1.castShadow = false;
+    glowArm1.receiveShadow = false;
+    group.add(glowArm1);
+    
+    // Second glow arm (diagonal, crossed)
+    const glowArm2Geometry = new THREE.PlaneGeometry(glowArmWidth, glowArmLength);
+    const glowArm2 = new THREE.Mesh(glowArm2Geometry, glowMaterial);
+    glowArm2.rotation.x = -Math.PI / 2;
+    glowArm2.rotation.z = -Math.PI / 4;
+    glowArm2.position.y = -0.08;
+    glowArm2.castShadow = false;
+    glowArm2.receiveShadow = false;
+    group.add(glowArm2);
     
     const row = Math.floor(cellIndex / 3);
     const col = cellIndex % 3;
@@ -518,20 +825,44 @@ function createX(cellIndex) {
 }
 
 function createO(cellIndex) {
-    const geometry = new THREE.TorusGeometry(0.55, 0.12, 16, 32);
+    const group = new THREE.Group();
+    
+    // Main torus with higher detail
+    const torusRadius = 0.5;
+    const tubeRadius = 0.1;
+    const geometry = new THREE.TorusGeometry(torusRadius, tubeRadius, 24, 48);
     const mesh = new THREE.Mesh(geometry, materials.playerO.clone());
     mesh.rotation.x = -Math.PI / 2;
     mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    
+    // Add subtle glow ring underneath - proportional to the torus
+    const glowInnerRadius = torusRadius - tubeRadius * 1.2;  // Slightly inside inner edge
+    const glowOuterRadius = torusRadius + tubeRadius * 1.2;  // Slightly outside outer edge
+    const glowGeometry = new THREE.RingGeometry(glowInnerRadius, glowOuterRadius, 48);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff00aa,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = -0.08;
+    glow.castShadow = false;
+    glow.receiveShadow = false;
+    group.add(glow);
     
     const row = Math.floor(cellIndex / 3);
     const col = cellIndex % 3;
-    mesh.position.set((col - 1) * CELL_SIZE, 0.15, (row - 1) * CELL_SIZE);
+    group.position.set((col - 1) * CELL_SIZE, 0.2, (row - 1) * CELL_SIZE);
     
-    mesh.scale.set(0, 0, 0);
-    mesh.userData.targetScale = 1;
-    mesh.userData.cellIndex = cellIndex;
+    group.scale.set(0, 0, 0);
+    group.userData.targetScale = 1;
+    group.userData.cellIndex = cellIndex;
     
-    return mesh;
+    return group;
 }
 
 function addPieceToBoard(cellIndex, player) {
@@ -549,13 +880,19 @@ function clearPieces() {
 function highlightWinningPieces(pattern) {
     pieces.forEach(piece => {
         if (pattern.includes(piece.userData.cellIndex)) {
-            if (piece.isGroup) {
-                piece.children.forEach(child => {
-                    child.material = materials.winHighlight.clone();
-                });
-            } else {
-                piece.material = materials.winHighlight.clone();
-            }
+            // Both X and O are now groups
+            piece.children.forEach(child => {
+                if (child.material && child.material.color) {
+                    // Skip glow meshes (keep them subtle)
+                    if (child.material.opacity && child.material.opacity < 1) {
+                        child.material = child.material.clone();
+                        child.material.color.setHex(0xffd700);
+                        child.material.opacity = 0.3;
+                    } else {
+                        child.material = materials.winHighlight.clone();
+                    }
+                }
+            });
             piece.userData.isWinning = true;
         }
     });
@@ -1586,6 +1923,7 @@ function animate() {
     
     controls.update();
     
+    // Animate pieces
     pieces.forEach(piece => {
         if (piece.userData.targetScale && piece.scale.x < piece.userData.targetScale) {
             const newScale = Math.min(piece.scale.x + delta * 5, piece.userData.targetScale);
@@ -1593,15 +1931,58 @@ function animate() {
         }
         
         if (piece.userData.isWinning) {
-            piece.position.y = 0.15 + Math.sin(time * 3) * 0.1;
+            // Enhanced winning animation with rotation
+            piece.position.y = 0.2 + Math.sin(time * 3) * 0.12;
+            piece.rotation.y = time * 0.5;
         }
     });
     
+    // Subtle board breathing animation
     if (!game.gameState.isGameOver()) {
-        boardGroup.rotation.y = Math.sin(time * 0.3) * 0.05;
+        boardGroup.rotation.y = Math.sin(time * 0.3) * 0.04;
     }
     
-    materials.gridLine.emissiveIntensity = 0.3 + Math.sin(time * 2) * 0.1;
+    // Animate grid line glow
+    materials.gridLine.emissiveIntensity = 0.35 + Math.sin(time * 2) * 0.15;
+    
+    // Animate ambient particles
+    const positions = particles.geometry.attributes.position.array;
+    for (let i = 0; i < particleCount; i++) {
+        // Slow upward drift
+        positions[i * 3 + 1] += delta * 0.3;
+        
+        // Add slight horizontal wobble
+        positions[i * 3] += Math.sin(time + i) * delta * 0.1;
+        positions[i * 3 + 2] += Math.cos(time + i * 0.5) * delta * 0.1;
+        
+        // Reset particles that drift too high
+        if (positions[i * 3 + 1] > 15) {
+            positions[i * 3 + 1] = 0;
+            positions[i * 3] = (Math.random() - 0.5) * 30;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 30;
+        }
+    }
+    particles.geometry.attributes.position.needsUpdate = true;
+    
+    // Subtle particle color pulse
+    const hue = 0.5 + Math.sin(time * 0.5) * 0.05; // Cyan range
+    particleMaterial.color.setHSL(hue, 1, 0.5);
+    
+    // Animate accent lights subtly
+    cyanLight.intensity = 1.3 + Math.sin(time * 1.5) * 0.3;
+    magentaLight.intensity = 1.0 + Math.sin(time * 1.2 + 1) * 0.3;
+    
+    // Animate corner accents on platform (if they exist)
+    if (platform && platform.children) {
+        platform.children.forEach((child, i) => {
+            if (child.geometry && child.geometry.type === 'CylinderGeometry') {
+                const pulseOffset = i * Math.PI / 2;
+                if (child.material.emissiveIntensity !== undefined) {
+                    child.material.emissiveIntensity = 0.25 + Math.sin(time * 2 + pulseOffset) * 0.15;
+                }
+            }
+        });
+    }
     
     renderer.render(scene, camera);
 }
