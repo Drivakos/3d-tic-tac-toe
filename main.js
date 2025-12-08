@@ -1,25 +1,171 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ============================================
-// GAME STATE
-// ============================================
-const gameState = {
-    board: Array(9).fill(null),
-    currentPlayer: 'X',
-    gameOver: false,
-    scores: { X: 0, O: 0 },
-    winningLine: null,
-    mode: null,        // 'pvp' or 'ai'
-    difficulty: null,  // 'easy', 'medium', 'hard'
-    isAIThinking: false
-};
+// Import modular components
+import { GameState } from './js/game/GameState.js';
+import { getGameStatus } from './js/game/GameLogic.js';
+import { AIController } from './js/game/AI.js';
+import { PLAYERS, GAME_MODES, AI_DIFFICULTY } from './js/game/constants.js';
+import { 
+    PeerManager, 
+    MESSAGE_TYPES, 
+    getRoomCodeFromUrl, 
+    clearRoomCodeFromUrl,
+    checkWebRTCSupport,
+    getWebRTCDiagnostics
+} from './js/multiplayer/PeerManager.js';
 
-const winPatterns = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
-    [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
-    [0, 4, 8], [2, 4, 6]             // Diagonals
-];
+// ============================================
+// GAME CONTROLLER
+// ============================================
+class GameController {
+    constructor() {
+        this.gameState = new GameState();
+        this.scores = { X: 0, O: 0 };
+        this.mode = null;
+        this.aiController = null;
+        this.peerManager = null;
+        
+        // Bind methods
+        this.handleMove = this.handleMove.bind(this);
+        this.resetGame = this.resetGame.bind(this);
+    }
+
+    /**
+     * Initialize a new game
+     */
+    startGame(mode, difficulty = null) {
+        this.mode = mode;
+        this.scores = { X: 0, O: 0 };
+        this.gameState.reset();
+
+        // Setup AI controller if needed
+        if (mode === GAME_MODES.AI && difficulty) {
+            this.aiController = new AIController(difficulty, PLAYERS.O);
+        } else {
+            this.aiController = null;
+        }
+
+        // Cleanup any existing peer connection
+        if (this.peerManager && mode !== GAME_MODES.PVP_REMOTE) {
+            this.peerManager.destroy();
+            this.peerManager = null;
+        }
+    }
+
+    /**
+     * Start a remote multiplayer game
+     */
+    startRemoteGame(peerManager) {
+        this.mode = GAME_MODES.PVP_REMOTE;
+        this.peerManager = peerManager;
+        this.scores = { X: 0, O: 0 };
+        this.gameState.reset();
+        this.aiController = null;
+    }
+
+    /**
+     * Handle a move attempt
+     */
+    handleMove(cellIndex, isRemoteMove = false) {
+        const currentPlayer = this.gameState.getCurrentPlayer();
+        
+        if (!this.gameState.placePiece(cellIndex, currentPlayer)) {
+            return false;
+        }
+
+        // Send move to remote player
+        if (this.isRemote() && !isRemoteMove) {
+            this.peerManager.sendMove(cellIndex);
+        }
+
+        // Check game status
+        const status = getGameStatus(this.gameState.getBoard());
+        
+        if (status.isOver) {
+            this.gameState.setGameOver(status.winner, status.pattern);
+            if (status.winner) {
+                this.scores[status.winner]++;
+            }
+            return { moved: true, status };
+        }
+
+        this.gameState.switchPlayer();
+        return { moved: true, status };
+    }
+
+    /**
+     * Reset the current game
+     */
+    resetGame(sendToRemote = true) {
+        this.gameState.reset();
+        
+        // Sync reset with remote player
+        if (this.isRemote() && sendToRemote && this.peerManager.isHost) {
+            this.peerManager.sendReset();
+        }
+    }
+
+    /**
+     * Check if it's a remote game
+     */
+    isRemote() {
+        return this.mode === GAME_MODES.PVP_REMOTE && this.peerManager?.isConnected;
+    }
+
+    /**
+     * Check if it's my turn (for remote games)
+     */
+    isMyTurn() {
+        if (!this.isRemote()) return true;
+        return this.peerManager.isMyTurn(this.gameState.getCurrentPlayer());
+    }
+
+    /**
+     * Get my role in remote game
+     */
+    getMyRole() {
+        return this.peerManager?.myRole || null;
+    }
+
+    /**
+     * Check if player can make a move
+     */
+    canMove() {
+        if (this.gameState.isGameOver()) return false;
+        if (this.aiController?.isThinking) return false;
+        if (this.mode === GAME_MODES.AI && this.gameState.getCurrentPlayer() === PLAYERS.O) return false;
+        if (this.isRemote() && !this.isMyTurn()) return false;
+        return true;
+    }
+
+    /**
+     * Trigger AI move if it's AI's turn
+     */
+    async triggerAIMove() {
+        if (this.mode !== GAME_MODES.AI) return;
+        if (this.gameState.getCurrentPlayer() !== PLAYERS.O) return;
+        if (this.gameState.isGameOver()) return;
+
+        const move = await this.aiController.getMove(this.gameState.getBoard());
+        if (move !== null) {
+            return this.handleMove(move);
+        }
+    }
+
+    /**
+     * Cleanup resources
+     */
+    cleanup() {
+        if (this.peerManager) {
+            this.peerManager.destroy();
+            this.peerManager = null;
+        }
+    }
+}
+
+// Create game controller instance
+const game = new GameController();
 
 // ============================================
 // THREE.JS SETUP
@@ -70,7 +216,6 @@ mainLight.shadow.camera.near = 0.5;
 mainLight.shadow.camera.far = 50;
 scene.add(mainLight);
 
-// Accent lights for the cyberpunk feel
 const cyanLight = new THREE.PointLight(0x00f5ff, 0.8, 20);
 cyanLight.position.set(-5, 5, -5);
 scene.add(cyanLight);
@@ -94,11 +239,6 @@ const materials = {
         emissiveIntensity: 0.3,
         metalness: 0.8,
         roughness: 0.2
-    }),
-    cellHover: new THREE.MeshStandardMaterial({
-        color: 0x2a2a4e,
-        transparent: true,
-        opacity: 0.5
     }),
     playerX: new THREE.MeshStandardMaterial({
         color: 0x00f5ff,
@@ -144,14 +284,12 @@ boardGroup.add(platform);
 function createGridLines() {
     const lineGeometry = new THREE.BoxGeometry(0.08, 0.15, BOARD_SIZE - 0.2);
     
-    // Vertical lines
     for (let i = -1; i <= 1; i += 2) {
         const line = new THREE.Mesh(lineGeometry, materials.gridLine);
         line.position.set(i * (CELL_SIZE / 2 + GAP / 2), 0.05, 0);
         boardGroup.add(line);
     }
     
-    // Horizontal lines
     const hLineGeometry = new THREE.BoxGeometry(BOARD_SIZE - 0.2, 0.15, 0.08);
     for (let i = -1; i <= 1; i += 2) {
         const line = new THREE.Mesh(hLineGeometry, materials.gridLine);
@@ -161,7 +299,7 @@ function createGridLines() {
 }
 createGridLines();
 
-// Invisible click targets for each cell
+// Click targets
 const clickTargets = [];
 const clickTargetGeometry = new THREE.PlaneGeometry(CELL_SIZE - GAP * 2, CELL_SIZE - GAP * 2);
 
@@ -203,12 +341,10 @@ function createX(cellIndex) {
     
     group.add(bar1, bar2);
     
-    // Position
     const row = Math.floor(cellIndex / 3);
     const col = cellIndex % 3;
     group.position.set((col - 1) * CELL_SIZE, 0.15, (row - 1) * CELL_SIZE);
     
-    // Animate entry
     group.scale.set(0, 0, 0);
     group.userData.targetScale = 1;
     group.userData.cellIndex = cellIndex;
@@ -222,12 +358,10 @@ function createO(cellIndex) {
     mesh.rotation.x = -Math.PI / 2;
     mesh.castShadow = true;
     
-    // Position
     const row = Math.floor(cellIndex / 3);
     const col = cellIndex % 3;
     mesh.position.set((col - 1) * CELL_SIZE, 0.15, (row - 1) * CELL_SIZE);
     
-    // Animate entry
     mesh.scale.set(0, 0, 0);
     mesh.userData.targetScale = 1;
     mesh.userData.cellIndex = cellIndex;
@@ -235,192 +369,21 @@ function createO(cellIndex) {
     return mesh;
 }
 
-function placePiece(cellIndex) {
-    if (gameState.board[cellIndex] || gameState.gameOver) return false;
-    
-    const piece = gameState.currentPlayer === 'X' 
-        ? createX(cellIndex) 
-        : createO(cellIndex);
-    
+function addPieceToBoard(cellIndex, player) {
+    const piece = player === PLAYERS.X ? createX(cellIndex) : createO(cellIndex);
     boardGroup.add(piece);
     pieces.push(piece);
-    gameState.board[cellIndex] = gameState.currentPlayer;
-    
-    return true;
+    return piece;
 }
 
-// ============================================
-// GAME LOGIC
-// ============================================
-function checkWinner() {
-    for (const pattern of winPatterns) {
-        const [a, b, c] = pattern;
-        if (
-            gameState.board[a] &&
-            gameState.board[a] === gameState.board[b] &&
-            gameState.board[a] === gameState.board[c]
-        ) {
-            return { winner: gameState.board[a], pattern };
-        }
-    }
-    return null;
-}
-
-function checkDraw() {
-    return gameState.board.every(cell => cell !== null);
-}
-
-// ============================================
-// AI LOGIC
-// ============================================
-function getEmptyCells(board) {
-    return board.map((cell, index) => cell === null ? index : null).filter(i => i !== null);
-}
-
-function checkWinnerForBoard(board) {
-    for (const pattern of winPatterns) {
-        const [a, b, c] = pattern;
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            return board[a];
-        }
-    }
-    return null;
-}
-
-// Minimax algorithm for unbeatable AI
-function minimax(board, depth, isMaximizing, alpha, beta) {
-    const winner = checkWinnerForBoard(board);
-    
-    // Terminal states
-    if (winner === 'O') return 10 - depth; // AI wins
-    if (winner === 'X') return depth - 10; // Player wins
-    if (getEmptyCells(board).length === 0) return 0; // Draw
-    
-    if (isMaximizing) {
-        let maxEval = -Infinity;
-        for (const cell of getEmptyCells(board)) {
-            board[cell] = 'O';
-            const eval_ = minimax(board, depth + 1, false, alpha, beta);
-            board[cell] = null;
-            maxEval = Math.max(maxEval, eval_);
-            alpha = Math.max(alpha, eval_);
-            if (beta <= alpha) break; // Alpha-beta pruning
-        }
-        return maxEval;
-    } else {
-        let minEval = Infinity;
-        for (const cell of getEmptyCells(board)) {
-            board[cell] = 'X';
-            const eval_ = minimax(board, depth + 1, true, alpha, beta);
-            board[cell] = null;
-            minEval = Math.min(minEval, eval_);
-            beta = Math.min(beta, eval_);
-            if (beta <= alpha) break; // Alpha-beta pruning
-        }
-        return minEval;
-    }
-}
-
-function getBestMove(board) {
-    let bestScore = -Infinity;
-    let bestMove = null;
-    
-    for (const cell of getEmptyCells(board)) {
-        board[cell] = 'O';
-        const score = minimax(board, 0, false, -Infinity, Infinity);
-        board[cell] = null;
-        
-        if (score > bestScore) {
-            bestScore = score;
-            bestMove = cell;
-        }
-    }
-    
-    return bestMove;
-}
-
-function getRandomMove(board) {
-    const emptyCells = getEmptyCells(board);
-    return emptyCells[Math.floor(Math.random() * emptyCells.length)];
-}
-
-function getMediumMove(board) {
-    // 50% chance of making the best move, 50% chance of random
-    // But always block winning moves and take winning opportunities
-    const emptyCells = getEmptyCells(board);
-    
-    // Check if AI can win
-    for (const cell of emptyCells) {
-        board[cell] = 'O';
-        if (checkWinnerForBoard(board) === 'O') {
-            board[cell] = null;
-            return cell;
-        }
-        board[cell] = null;
-    }
-    
-    // Check if player can win and block
-    for (const cell of emptyCells) {
-        board[cell] = 'X';
-        if (checkWinnerForBoard(board) === 'X') {
-            board[cell] = null;
-            return cell;
-        }
-        board[cell] = null;
-    }
-    
-    // 50% best move, 50% random
-    if (Math.random() > 0.5) {
-        return getBestMove(board);
-    }
-    
-    // Prefer center, then corners, then edges
-    if (board[4] === null) return 4;
-    
-    const corners = [0, 2, 6, 8].filter(i => board[i] === null);
-    if (corners.length > 0) {
-        return corners[Math.floor(Math.random() * corners.length)];
-    }
-    
-    return getRandomMove(board);
-}
-
-function getAIMove() {
-    const boardCopy = [...gameState.board];
-    
-    switch (gameState.difficulty) {
-        case 'easy':
-            return getRandomMove(boardCopy);
-        case 'medium':
-            return getMediumMove(boardCopy);
-        case 'hard':
-            return getBestMove(boardCopy);
-        default:
-            return getRandomMove(boardCopy);
-    }
-}
-
-function makeAIMove() {
-    if (gameState.gameOver || gameState.currentPlayer !== 'O' || gameState.mode !== 'ai') {
-        return;
-    }
-    
-    gameState.isAIThinking = true;
-    
-    // Add a small delay to make it feel more natural
-    setTimeout(() => {
-        const move = getAIMove();
-        if (move !== null) {
-            handleMove(move);
-        }
-        gameState.isAIThinking = false;
-    }, 500 + Math.random() * 500);
+function clearPieces() {
+    pieces.forEach(piece => boardGroup.remove(piece));
+    pieces.length = 0;
 }
 
 function highlightWinningPieces(pattern) {
     pieces.forEach(piece => {
         if (pattern.includes(piece.userData.cellIndex)) {
-            // Apply golden highlight
             if (piece.isGroup) {
                 piece.children.forEach(child => {
                     child.material = materials.winHighlight.clone();
@@ -433,6 +396,20 @@ function highlightWinningPieces(pattern) {
     });
 }
 
+function rebuildBoardFromState() {
+    clearPieces();
+    const board = game.gameState.getBoard();
+    board.forEach((cell, index) => {
+        if (cell) {
+            const piece = addPieceToBoard(index, cell);
+            piece.scale.set(1, 1, 1);
+        }
+    });
+}
+
+// ============================================
+// UI MANAGEMENT
+// ============================================
 function showMessage(text) {
     const messageEl = document.getElementById('message');
     messageEl.textContent = text;
@@ -445,128 +422,370 @@ function hideMessage() {
 
 function updateUI() {
     const playerEl = document.getElementById('current-player');
+    const currentPlayer = game.gameState.getCurrentPlayer();
     
-    // Show "AI" or "YOU" in AI mode
-    if (gameState.mode === 'ai') {
-        if (gameState.currentPlayer === 'X') {
-            playerEl.textContent = 'YOU';
+    if (game.mode === GAME_MODES.AI) {
+        if (currentPlayer === PLAYERS.X) {
+            playerEl.textContent = 'P1';
         } else {
-            playerEl.textContent = gameState.isAIThinking ? 'AI...' : 'AI';
+            playerEl.textContent = game.aiController?.isThinking ? 'AI...' : 'AI';
         }
     } else {
-        playerEl.textContent = gameState.currentPlayer;
+        // For both local and remote: P1 = X, P2 = O
+        playerEl.textContent = currentPlayer === PLAYERS.X ? 'P1' : 'P2';
     }
     
-    playerEl.className = `player-${gameState.currentPlayer.toLowerCase()}`;
+    playerEl.className = `player-${currentPlayer.toLowerCase()}`;
     
-    document.getElementById('score-x').textContent = gameState.scores.X;
-    document.getElementById('score-o').textContent = gameState.scores.O;
+    document.getElementById('score-x').textContent = game.scores.X;
+    document.getElementById('score-o').textContent = game.scores.O;
     
-    // Update score labels for AI mode
     const scoreLabelX = document.querySelector('.player-x-score .score-label');
     const scoreLabelO = document.querySelector('.player-o-score .score-label');
     
-    if (gameState.mode === 'ai') {
-        scoreLabelX.textContent = 'YOU';
+    if (game.mode === GAME_MODES.AI) {
+        scoreLabelX.textContent = 'P1';
         scoreLabelO.textContent = 'AI';
     } else {
-        scoreLabelX.textContent = 'X';
-        scoreLabelO.textContent = 'O';
+        // P1 = X (cyan), P2 = O (magenta)
+        scoreLabelX.textContent = 'P1';
+        scoreLabelO.textContent = 'P2';
+    }
+    
+    if (game.isRemote()) {
+        updateRemoteTurnIndicator();
     }
 }
 
-function switchPlayer() {
-    gameState.currentPlayer = gameState.currentPlayer === 'X' ? 'O' : 'X';
-    updateUI();
+function updateRemoteTurnIndicator() {
+    const turnIndicator = document.getElementById('turn-indicator');
+    const turnText = document.getElementById('turn-text');
+    const isMyTurn = game.isMyTurn();
+    const currentPlayer = game.gameState.getCurrentPlayer();
+    const playerLabel = currentPlayer === PLAYERS.X ? 'P1' : 'P2';
+    
+    turnIndicator.className = isMyTurn ? 'your-turn' : 'waiting';
+    turnText.textContent = isMyTurn ? 'Your turn!' : `${playerLabel}'s turn...`;
 }
 
-function handleMove(cellIndex) {
-    if (!placePiece(cellIndex)) return;
+function hideAllModeScreens() {
+    document.getElementById('mode-buttons').classList.remove('hidden');
+    document.getElementById('pvp-type-select').classList.add('hidden');
+    document.getElementById('remote-setup').classList.add('hidden');
+    document.getElementById('waiting-room').classList.add('hidden');
+    document.getElementById('connection-status').classList.add('hidden');
+    document.getElementById('difficulty-select').classList.add('hidden');
+}
+
+function showConnectionStatus(message) {
+    hideAllModeScreens();
+    document.getElementById('connection-status').classList.remove('hidden');
+    document.getElementById('connection-message').textContent = message;
+}
+
+function hideConnectionStatus() {
+    document.getElementById('connection-status').classList.add('hidden');
+}
+
+function showWaitingRoom() {
+    hideAllModeScreens();
+    document.getElementById('waiting-room').classList.remove('hidden');
+}
+
+// ============================================
+// GAME FLOW
+// ============================================
+async function handleCellClick(cellIndex) {
+    if (!game.canMove()) return;
     
-    const result = checkWinner();
-    if (result) {
-        gameState.gameOver = true;
-        gameState.winningLine = result.pattern;
-        gameState.scores[result.winner]++;
-        highlightWinningPieces(result.pattern);
-        
-        // Custom message for AI mode
-        if (gameState.mode === 'ai') {
-            const msg = result.winner === 'X' ? 'YOU WIN!' : 'AI WINS!';
-            showMessage(msg);
+    const result = game.handleMove(cellIndex);
+    if (!result || !result.moved) return;
+    
+    addPieceToBoard(cellIndex, game.gameState.getBoard()[cellIndex]);
+    
+    if (result.status.isOver) {
+        if (result.status.winner) {
+            highlightWinningPieces(result.status.pattern);
+            
+            if (game.mode === GAME_MODES.AI) {
+                showMessage(result.status.winner === PLAYERS.X ? 'P1 WINS!' : 'AI WINS!');
+            } else {
+                // P1 = X, P2 = O
+                const winnerLabel = result.status.winner === PLAYERS.X ? 'P1' : 'P2';
+                showMessage(`${winnerLabel} WINS!`);
+            }
         } else {
-            showMessage(`${result.winner} WINS!`);
+            showMessage('DRAW!');
+        }
+    }
+    
+    updateUI();
+    
+    // Trigger AI move if needed
+    if (game.mode === GAME_MODES.AI && !game.gameState.isGameOver()) {
+        const aiResult = await game.triggerAIMove();
+        if (aiResult?.moved) {
+            const board = game.gameState.getBoard();
+            const aiCellIndex = board.findIndex((cell, idx) => 
+                cell === PLAYERS.O && !pieces.some(p => p.userData.cellIndex === idx)
+            );
+            if (aiCellIndex !== -1) {
+                addPieceToBoard(aiCellIndex, PLAYERS.O);
+            }
+            
+            if (aiResult.status.isOver) {
+                if (aiResult.status.winner) {
+                    highlightWinningPieces(aiResult.status.pattern);
+                    showMessage(aiResult.status.winner === PLAYERS.X ? 'P1 WINS!' : 'AI WINS!');
+                } else {
+                    showMessage('DRAW!');
+                }
+            }
+            updateUI();
+        }
+    }
+}
+
+function handleRemoteMove(cellIndex) {
+    const result = game.handleMove(cellIndex, true);
+    if (result?.moved) {
+        addPieceToBoard(cellIndex, game.gameState.getBoard()[cellIndex]);
+        
+        if (result.status.isOver) {
+            if (result.status.winner) {
+                highlightWinningPieces(result.status.pattern);
+                // Use P1/P2 labels consistently
+                const winnerLabel = result.status.winner === PLAYERS.X ? 'P1' : 'P2';
+                showMessage(`${winnerLabel} WINS!`);
+            } else {
+                showMessage('DRAW!');
+            }
         }
         updateUI();
-        return;
-    }
-    
-    if (checkDraw()) {
-        gameState.gameOver = true;
-        showMessage("DRAW!");
-        return;
-    }
-    
-    switchPlayer();
-    
-    // Trigger AI move if it's AI's turn
-    if (gameState.mode === 'ai' && gameState.currentPlayer === 'O') {
-        makeAIMove();
     }
 }
 
-function resetGame() {
-    // Clear pieces
-    pieces.forEach(piece => boardGroup.remove(piece));
-    pieces.length = 0;
-    
-    // Reset state
-    gameState.board = Array(9).fill(null);
-    gameState.currentPlayer = 'X';
-    gameState.gameOver = false;
-    gameState.winningLine = null;
-    gameState.isAIThinking = false;
-    
+function resetGameUI() {
+    clearPieces();
     hideMessage();
     updateUI();
 }
 
-function goToMainMenu() {
-    resetGame();
-    gameState.mode = null;
-    gameState.difficulty = null;
-    gameState.scores = { X: 0, O: 0 };
+function startLocalGame(mode, difficulty = null) {
+    game.startGame(mode, difficulty);
     
-    // Show mode selection, hide game UI
-    document.getElementById('mode-select-overlay').classList.remove('hidden');
-    document.getElementById('ui-overlay').classList.add('hidden');
-    document.getElementById('difficulty-select').classList.add('hidden');
-    
-    // Reset mode button selection
-    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('selected'));
-    
-    updateUI();
-}
-
-function startGame(mode, difficulty = null) {
-    gameState.mode = mode;
-    gameState.difficulty = difficulty;
-    gameState.scores = { X: 0, O: 0 };
-    
-    // Update mode label
     const modeLabel = document.getElementById('game-mode-label');
-    if (mode === 'pvp') {
-        modeLabel.textContent = '2 PLAYERS';
-    } else {
-        const difficultyText = difficulty.toUpperCase();
-        modeLabel.textContent = `VS AI (${difficultyText})`;
+    if (mode === GAME_MODES.PVP_LOCAL) {
+        modeLabel.textContent = 'LOCAL';
+    } else if (mode === GAME_MODES.AI) {
+        modeLabel.textContent = `VS AI (${difficulty.toUpperCase()})`;
     }
     
-    // Hide mode selection, show game UI
+    document.getElementById('your-role').classList.add('hidden');
+    document.getElementById('turn-indicator').classList.add('hidden');
+    
     document.getElementById('mode-select-overlay').classList.add('hidden');
     document.getElementById('ui-overlay').classList.remove('hidden');
     
-    resetGame();
+    resetGameUI();
+}
+
+function startRemoteGameUI(peerManager) {
+    game.startRemoteGame(peerManager);
+    
+    document.getElementById('game-mode-label').textContent = 'REMOTE';
+    
+    // Show role as P1 or P2
+    document.getElementById('your-role').classList.remove('hidden');
+    const roleLabel = peerManager.myRole === PLAYERS.X ? 'P1' : 'P2';
+    document.getElementById('role-value').textContent = roleLabel;
+    document.getElementById('role-value').className = `player-${peerManager.myRole.toLowerCase()}`;
+    
+    document.getElementById('turn-indicator').classList.remove('hidden');
+    
+    hideAllModeScreens();
+    document.getElementById('mode-select-overlay').classList.add('hidden');
+    document.getElementById('ui-overlay').classList.remove('hidden');
+    
+    resetGameUI();
+}
+
+function goToMainMenu() {
+    game.cleanup();
+    game.gameState.reset();
+    game.scores = { X: 0, O: 0 };
+    game.mode = null;
+    
+    document.getElementById('your-role').classList.add('hidden');
+    document.getElementById('turn-indicator').classList.add('hidden');
+    
+    document.getElementById('mode-select-overlay').classList.remove('hidden');
+    document.getElementById('ui-overlay').classList.add('hidden');
+    
+    hideAllModeScreens();
+    document.getElementById('mode-buttons').classList.remove('hidden');
+    
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('selected'));
+    
+    resetGameUI();
+}
+
+// ============================================
+// REMOTE MULTIPLAYER
+// ============================================
+async function createRoom() {
+    // Check WebRTC support first
+    const webrtcCheck = checkWebRTCSupport();
+    console.log('WebRTC check:', webrtcCheck);
+    console.log('WebRTC diagnostics:', getWebRTCDiagnostics());
+    
+    if (!webrtcCheck.supported) {
+        showConnectionStatus(webrtcCheck.reason);
+        setTimeout(() => {
+            hideConnectionStatus();
+            document.getElementById('remote-setup').classList.remove('hidden');
+        }, 5000);
+        return;
+    }
+    
+    showConnectionStatus('Creating room...');
+    
+    try {
+        const peerManager = new PeerManager();
+        
+        peerManager.onConnect = (info) => {
+            startRemoteGameUI(peerManager);
+        };
+        
+        peerManager.onMessage = (data) => {
+            handleRemoteMessage(data, peerManager);
+        };
+        
+        peerManager.onDisconnect = () => {
+            if (!game.gameState.isGameOver()) {
+                showMessage('OPPONENT DISCONNECTED');
+                game.gameState.setGameOver();
+            }
+        };
+        
+        peerManager.onError = (err) => {
+            console.error('PeerManager error:', err);
+            console.log('Diagnostics:', getWebRTCDiagnostics());
+        };
+        
+        await peerManager.initialize();
+        
+        document.getElementById('room-code-value').textContent = peerManager.roomCode;
+        document.getElementById('share-link').value = peerManager.getShareableLink();
+        
+        hideConnectionStatus();
+        showWaitingRoom();
+        
+        game.peerManager = peerManager;
+    } catch (err) {
+        console.error('Failed to create room:', err);
+        console.log('Diagnostics:', getWebRTCDiagnostics());
+        
+        let errorMsg = 'Failed to create room. Please try again.';
+        if (err.message?.includes('WebRTC')) {
+            errorMsg = 'WebRTC error. Make sure you are using HTTPS or localhost.';
+        } else if (err.type === 'browser-incompatible') {
+            errorMsg = 'Browser not compatible. Try Chrome, Firefox, or Safari.';
+        }
+        
+        showConnectionStatus(errorMsg);
+        setTimeout(() => {
+            hideConnectionStatus();
+            document.getElementById('remote-setup').classList.remove('hidden');
+        }, 4000);
+    }
+}
+
+async function joinRoom(roomCode) {
+    // Check WebRTC support first
+    const webrtcCheck = checkWebRTCSupport();
+    console.log('WebRTC check:', webrtcCheck);
+    console.log('WebRTC diagnostics:', getWebRTCDiagnostics());
+    
+    if (!webrtcCheck.supported) {
+        showConnectionStatus(webrtcCheck.reason);
+        setTimeout(() => {
+            hideConnectionStatus();
+            document.getElementById('remote-setup').classList.remove('hidden');
+        }, 5000);
+        return;
+    }
+    
+    showConnectionStatus('Connecting to room...');
+    
+    try {
+        const peerManager = new PeerManager();
+        
+        peerManager.onConnect = (info) => {
+            startRemoteGameUI(peerManager);
+        };
+        
+        peerManager.onMessage = (data) => {
+            handleRemoteMessage(data, peerManager);
+        };
+        
+        peerManager.onDisconnect = () => {
+            if (!game.gameState.isGameOver()) {
+                showMessage('OPPONENT DISCONNECTED');
+                game.gameState.setGameOver();
+            }
+        };
+        
+        peerManager.onError = (err) => {
+            console.error('PeerManager error:', err);
+            console.log('Diagnostics:', getWebRTCDiagnostics());
+        };
+        
+        await peerManager.initialize();
+        await peerManager.connect(roomCode);
+        
+        hideConnectionStatus();
+    } catch (err) {
+        console.error('Failed to join room:', err);
+        console.log('Diagnostics:', getWebRTCDiagnostics());
+        
+        let errorMsg = 'Failed to join room. Check the code and try again.';
+        if (err.message?.includes('WebRTC')) {
+            errorMsg = 'WebRTC error. Make sure you are using HTTPS or localhost.';
+        } else if (err.message?.includes('timeout')) {
+            errorMsg = 'Connection timeout. The room may no longer exist.';
+        } else if (err.type === 'peer-unavailable') {
+            errorMsg = 'Room not found. Check the code and try again.';
+        }
+        
+        showConnectionStatus(errorMsg);
+        setTimeout(() => {
+            hideConnectionStatus();
+            document.getElementById('remote-setup').classList.remove('hidden');
+        }, 4000);
+    }
+}
+
+function handleRemoteMessage(data, peerManager) {
+    switch (data.type) {
+        case MESSAGE_TYPES.MOVE:
+            if (!game.isMyTurn()) {
+                handleRemoteMove(data.cellIndex);
+            }
+            break;
+            
+        case MESSAGE_TYPES.RESET:
+            game.resetGame(false);
+            resetGameUI();
+            break;
+            
+        case MESSAGE_TYPES.SYNC:
+            game.gameState.fromJSON(data);
+            game.scores = data.scores || game.scores;
+            rebuildBoardFromState();
+            updateUI();
+            break;
+    }
 }
 
 // ============================================
@@ -580,28 +799,31 @@ function onMouseMove(event) {
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 }
 
-function canPlayerMove() {
-    if (gameState.gameOver) return false;
-    if (gameState.isAIThinking) return false;
-    if (gameState.mode === 'ai' && gameState.currentPlayer === 'O') return false;
-    return true;
-}
-
 function onClick(event) {
-    if (!canPlayerMove()) return;
+    if (!game.canMove()) return;
     
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(clickTargets);
     
     if (intersects.length > 0) {
         const cellIndex = intersects[0].object.userData.cellIndex;
-        handleMove(cellIndex);
+        handleCellClick(cellIndex);
     }
 }
 
 canvas.addEventListener('mousemove', onMouseMove);
 canvas.addEventListener('click', onClick);
-document.getElementById('reset-btn').addEventListener('click', resetGame);
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+    if (game.isRemote() && !game.peerManager.isHost && !game.gameState.isGameOver()) {
+        showMessage('WAIT FOR HOST');
+        setTimeout(hideMessage, 1500);
+        return;
+    }
+    game.resetGame(true);
+    resetGameUI();
+});
+
 document.getElementById('menu-btn').addEventListener('click', goToMainMenu);
 
 // Touch support
@@ -611,11 +833,11 @@ canvas.addEventListener('touchstart', (event) => {
     mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
     
-    if (canPlayerMove()) {
+    if (game.canMove()) {
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(clickTargets);
         if (intersects.length > 0) {
-            handleMove(intersects[0].object.userData.cellIndex);
+            handleCellClick(intersects[0].object.userData.cellIndex);
         }
     }
 }, { passive: false });
@@ -623,33 +845,116 @@ canvas.addEventListener('touchstart', (event) => {
 // ============================================
 // MODE SELECTION
 // ============================================
-let selectedMode = null;
-
 document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const mode = btn.dataset.mode;
-        selectedMode = mode;
         
-        // Update selection visual
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         
         if (mode === 'pvp') {
-            // Start 2 player game immediately
-            startGame('pvp');
+            document.getElementById('mode-buttons').classList.add('hidden');
+            document.getElementById('pvp-type-select').classList.remove('hidden');
         } else {
-            // Show difficulty selection
+            document.getElementById('mode-buttons').classList.add('hidden');
             document.getElementById('difficulty-select').classList.remove('hidden');
         }
     });
 });
 
+document.querySelectorAll('.pvp-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const pvpType = btn.dataset.pvpType;
+        
+        if (pvpType === 'local') {
+            startLocalGame(GAME_MODES.PVP_LOCAL);
+        } else {
+            document.getElementById('pvp-type-select').classList.add('hidden');
+            document.getElementById('remote-setup').classList.remove('hidden');
+        }
+    });
+});
+
+document.getElementById('back-to-pvp-type').addEventListener('click', () => {
+    document.getElementById('remote-setup').classList.add('hidden');
+    document.getElementById('pvp-type-select').classList.remove('hidden');
+});
+
+document.getElementById('create-room-btn').addEventListener('click', createRoom);
+
+document.getElementById('join-room-btn').addEventListener('click', () => {
+    const roomCode = document.getElementById('room-code-input').value.trim().toUpperCase();
+    if (roomCode.length >= 4) {
+        joinRoom(roomCode);
+    } else {
+        // Use showConnectionStatus instead of alert for consistent UX
+        showConnectionStatus('Please enter a valid room code (at least 4 characters)');
+        setTimeout(() => {
+            hideConnectionStatus();
+            document.getElementById('remote-setup').classList.remove('hidden');
+        }, 2000);
+    }
+});
+
+document.getElementById('room-code-input').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase();
+});
+
+document.getElementById('room-code-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        document.getElementById('join-room-btn').click();
+    }
+});
+
+document.getElementById('copy-link-btn').addEventListener('click', async () => {
+    const linkInput = document.getElementById('share-link');
+    const copyBtn = document.getElementById('copy-link-btn');
+    
+    try {
+        await navigator.clipboard.writeText(linkInput.value);
+        copyBtn.textContent = '✓ COPIED!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+            copyBtn.textContent = '📋 COPY';
+            copyBtn.classList.remove('copied');
+        }, 2000);
+    } catch (err) {
+        linkInput.select();
+        document.execCommand('copy');
+    }
+});
+
+document.getElementById('cancel-waiting-btn').addEventListener('click', () => {
+    game.cleanup();
+    document.getElementById('waiting-room').classList.add('hidden');
+    document.getElementById('remote-setup').classList.remove('hidden');
+});
+
 document.querySelectorAll('.difficulty-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const difficulty = btn.dataset.difficulty;
-        startGame('ai', difficulty);
+        startLocalGame(GAME_MODES.AI, difficulty);
     });
 });
+
+// Check URL for room code
+function checkUrlForRoom() {
+    const roomCode = getRoomCodeFromUrl();
+    
+    if (roomCode) {
+        clearRoomCodeFromUrl();
+        
+        document.getElementById('mode-buttons').classList.add('hidden');
+        document.getElementById('remote-setup').classList.remove('hidden');
+        document.getElementById('room-code-input').value = roomCode.toUpperCase();
+        
+        setTimeout(() => {
+            joinRoom(roomCode.toUpperCase());
+        }, 500);
+    }
+}
+
+checkUrlForRoom();
 
 // ============================================
 // WINDOW RESIZE
@@ -672,28 +977,23 @@ function animate() {
     const delta = clock.getDelta();
     const time = clock.getElapsedTime();
     
-    // Update controls
     controls.update();
     
-    // Animate pieces scale (entry animation)
     pieces.forEach(piece => {
         if (piece.userData.targetScale && piece.scale.x < piece.userData.targetScale) {
             const newScale = Math.min(piece.scale.x + delta * 5, piece.userData.targetScale);
             piece.scale.set(newScale, newScale, newScale);
         }
         
-        // Winning pieces float animation
         if (piece.userData.isWinning) {
             piece.position.y = 0.15 + Math.sin(time * 3) * 0.1;
         }
     });
     
-    // Subtle board rotation when idle
-    if (!gameState.gameOver) {
+    if (!game.gameState.isGameOver()) {
         boardGroup.rotation.y = Math.sin(time * 0.3) * 0.05;
     }
     
-    // Pulsing grid lines
     materials.gridLine.emissiveIntensity = 0.3 + Math.sin(time * 2) * 0.1;
     
     renderer.render(scene, camera);
@@ -702,5 +1002,3 @@ function animate() {
 // Initialize
 updateUI();
 animate();
-
-

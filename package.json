@@ -1,0 +1,23 @@
+{
+  "name": "3d-tic-tac-toe",
+  "version": "1.0.0",
+  "description": "A 3D Tic Tac Toe game with local and remote multiplayer",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "serve": "npx serve ."
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "tic-tac-toe",
+    "three.js",
+    "webrtc",
+    "multiplayer"
+  ],
+  "license": "MIT"
+}
+
