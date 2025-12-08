@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0f"/>
+      <stop offset="50%" stop-color="#0f0f1a"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+    
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <filter id="gridGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="180" height="180" rx="40" fill="url(#bgGradient)"/>
+  
+  <!-- Grid lines -->
+  <g stroke="#00f5ff" stroke-width="4" stroke-opacity="0.5" filter="url(#gridGlow)">
+    <line x1="68" y1="25" x2="68" y2="155"/>
+    <line x1="112" y1="25" x2="112" y2="155"/>
+    <line x1="25" y1="68" x2="155" y2="68"/>
+    <line x1="25" y1="112" x2="155" y2="112"/>
+  </g>
+  
+  <!-- X - top left -->
+  <g stroke="#00f5ff" stroke-width="12" stroke-linecap="round" filter="url(#glow)">
+    <line x1="35" y1="35" x2="58" y2="58"/>
+    <line x1="58" y1="35" x2="35" y2="58"/>
+  </g>
+  
+  <!-- O - center -->
+  <circle cx="90" cy="90" r="18" fill="none" stroke="#ff00aa" stroke-width="10" filter="url(#glow)"/>
+  
+  <!-- X - bottom right -->
+  <g stroke="#00f5ff" stroke-width="12" stroke-linecap="round" filter="url(#glow)">
+    <line x1="122" y1="122" x2="145" y2="145"/>
+    <line x1="145" y1="122" x2="122" y2="145"/>
+  </g>
+  
+  <!-- Small O - top right (game in progress feel) -->
+  <circle cx="133" cy="46" r="12" fill="none" stroke="#ff00aa" stroke-width="7" stroke-opacity="0.7" filter="url(#glow)"/>
+</svg>
+
