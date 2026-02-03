@@ -1408,11 +1408,17 @@ function attachAllEventListeners(): void {
     btn.addEventListener('click', () => {
       console.log('[Debug] Mode button clicked:', btn.getAttribute('data-mode'));
       const mode = btn.getAttribute('data-mode');
+
+      // Hide all intermediate screens first
+      document.getElementById('mode-buttons')?.classList.add('hidden');
+      document.getElementById('pvp-type-select')?.classList.add('hidden');
+      document.getElementById('timer-select')?.classList.add('hidden');
+      document.getElementById('remote-setup')?.classList.add('hidden');
+      document.getElementById('difficulty-select')?.classList.add('hidden');
+
       if (mode === 'pvp') {
-        document.getElementById('mode-buttons')?.classList.add('hidden');
         document.getElementById('pvp-type-select')?.classList.remove('hidden');
       } else if (mode === 'ai') {
-        document.getElementById('mode-buttons')?.classList.add('hidden');
         document.getElementById('difficulty-select')?.classList.remove('hidden');
       }
     });
