@@ -112,7 +112,7 @@ export class PeerManager {
   private connection: PeerConnection | null = null;
   private roomCode: string | null = null;
   private _isHost: boolean = false;
-  private myRole: Player | null = null;
+  private _myRole: Player | null = null;
   private _isConnected: boolean = false;
   private gameSettings: GameSettings | null = null;
 
@@ -139,11 +139,11 @@ export class PeerManager {
   }
 
   get myRole(): Player | null {
-    return this.myRole;
+    return this._myRole;
   }
 
   set myRole(value: Player | null) {
-    this.myRole = value;
+    this._myRole = value;
   }
 
   setGameSettings(settings: GameSettings): void {

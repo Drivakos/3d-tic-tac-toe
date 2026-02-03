@@ -885,6 +885,23 @@ function updateRemoteTurnIndicator(): void {
   }
 }
 
+// Helper function to check for game over and display message
+function checkGameOverAndShowMessage(): void {
+  const status = game.gameState.isGameOver();
+  if (status) {
+    const board = game.gameState.getBoard();
+    const gameStatus = getGameStatus(board);
+    if (gameStatus.pattern) {
+      highlightWinningPieces(gameStatus.pattern);
+    }
+    if (gameStatus.isDraw) {
+      showMessage("IT'S A DRAW!");
+    } else if (gameStatus.winner) {
+      showMessage(`${getPlayerLabel(gameStatus.winner)} WINS!`);
+    }
+  }
+}
+
 function hideAllModeScreens(): void {
   const modeSelectOverlay = document.getElementById('mode-select-overlay');
   const modeButtons = document.getElementById('mode-buttons');
@@ -1320,9 +1337,26 @@ game.onTimerTick = updateTimerUI;
 game.onTimerTimeout = handleTimerTimeout;
 
 function showConnectionStatus(message: string): void {
-  hideAllModeScreens();
+  // Hide sub-screens but keep the overlay visible
+  const modeButtons = document.getElementById('mode-buttons');
+  const pvpTypeSelect = document.getElementById('pvp-type-select');
+  const timerSelect = document.getElementById('timer-select');
+  const remoteSetup = document.getElementById('remote-setup');
+  const waitingRoom = document.getElementById('waiting-room');
+  const difficultySelect = document.getElementById('difficulty-select');
   const connectionStatus = document.getElementById('connection-status');
   const connectionMessage = document.getElementById('connection-message');
+  const modeSelectOverlay = document.getElementById('mode-select-overlay');
+
+  if (modeButtons) modeButtons.classList.add('hidden');
+  if (pvpTypeSelect) pvpTypeSelect.classList.add('hidden');
+  if (timerSelect) timerSelect.classList.add('hidden');
+  if (remoteSetup) remoteSetup.classList.add('hidden');
+  if (waitingRoom) waitingRoom.classList.add('hidden');
+  if (difficultySelect) difficultySelect.classList.add('hidden');
+
+  // Make sure the overlay is visible and show the connection status
+  if (modeSelectOverlay) modeSelectOverlay.classList.remove('hidden');
   if (connectionStatus) connectionStatus.classList.remove('hidden');
   if (connectionMessage) connectionMessage.textContent = message;
 }
@@ -1333,8 +1367,25 @@ function hideConnectionStatus(): void {
 }
 
 function showWaitingRoom(): void {
-  hideAllModeScreens();
+  // Hide sub-screens but keep the overlay visible
+  const modeButtons = document.getElementById('mode-buttons');
+  const pvpTypeSelect = document.getElementById('pvp-type-select');
+  const timerSelect = document.getElementById('timer-select');
+  const remoteSetup = document.getElementById('remote-setup');
+  const connectionStatus = document.getElementById('connection-status');
+  const difficultySelect = document.getElementById('difficulty-select');
   const waitingRoom = document.getElementById('waiting-room');
+  const modeSelectOverlay = document.getElementById('mode-select-overlay');
+
+  if (modeButtons) modeButtons.classList.add('hidden');
+  if (pvpTypeSelect) pvpTypeSelect.classList.add('hidden');
+  if (timerSelect) timerSelect.classList.add('hidden');
+  if (remoteSetup) remoteSetup.classList.add('hidden');
+  if (connectionStatus) connectionStatus.classList.add('hidden');
+  if (difficultySelect) difficultySelect.classList.add('hidden');
+
+  // Make sure the overlay is visible and show the waiting room
+  if (modeSelectOverlay) modeSelectOverlay.classList.remove('hidden');
   if (waitingRoom) waitingRoom.classList.remove('hidden');
 }
 
@@ -1420,12 +1471,22 @@ function attachAllEventListeners(): void {
 
   // Game control buttons
   document.getElementById('reset-btn')?.addEventListener('click', () => {
-    game.resetGame(true, true);
-    hideMessage();
-    rebuildBoardFromState();
-    updateUI();
-    resetTimerDisplays();
-    game.startTimer();
+    if (game.isRemote() && game.peerManager) {
+      // For remote games, send a rematch request instead of directly resetting
+      const myRole = game.getMyRole();
+      const playerNum = myRole === PLAYERS.X ? 1 : 2;
+      game.peerManager.sendRematchRequest(playerNum as 1 | 2);
+      // Show waiting modal
+      document.getElementById('waiting-rematch-modal')?.classList.remove('hidden');
+    } else {
+      // For local games, reset immediately
+      game.resetGame(true, true);
+      hideMessage();
+      rebuildBoardFromState();
+      updateUI();
+      resetTimerDisplays();
+      game.startTimer();
+    }
   });
 
   document.getElementById('menu-btn')?.addEventListener('click', () => {
@@ -1433,6 +1494,37 @@ function attachAllEventListeners(): void {
     showModeSelectScreen();
     document.getElementById('ui-overlay')?.classList.add('hidden');
     clearPieces();
+  });
+
+  // Rematch modal handlers
+  document.getElementById('accept-rematch-btn')?.addEventListener('click', () => {
+    if (game.peerManager) {
+      game.peerManager.sendRematchResponse(true);
+    }
+    document.getElementById('rematch-modal')?.classList.add('hidden');
+    // Reset the game
+    game.resetGame(false, true);
+    hideMessage();
+    rebuildBoardFromState();
+    updateUI();
+    resetTimerDisplays();
+    game.startTimer();
+  });
+
+  document.getElementById('decline-rematch-btn')?.addEventListener('click', () => {
+    if (game.peerManager) {
+      game.peerManager.sendRematchResponse(false);
+    }
+    document.getElementById('rematch-modal')?.classList.add('hidden');
+    // Go back to menu
+    game.cleanup();
+    showModeSelectScreen();
+    document.getElementById('ui-overlay')?.classList.add('hidden');
+    clearPieces();
+  });
+
+  document.getElementById('cancel-rematch-btn')?.addEventListener('click', () => {
+    document.getElementById('waiting-rematch-modal')?.classList.add('hidden');
   });
 
   // Canvas click handler for game moves
@@ -1502,22 +1594,39 @@ function attachAllEventListeners(): void {
 
   // Create room button
   document.getElementById('create-room-btn')?.addEventListener('click', async () => {
+    console.log('[Debug] Create room button clicked');
     const peerManager = new PeerManager();
     game.startRemoteGame(peerManager);
 
     showConnectionStatus('Creating room...');
 
     try {
+      console.log('[Debug] Initializing peer...');
       await peerManager.initialize();
+      console.log('[Debug] Peer initialized successfully');
       const roomCode = peerManager.getStatus().roomCode;
+      console.log('[Debug] Room code:', roomCode);
 
       const roomCodeValue = document.getElementById('room-code-value');
-      const shareLink = document.getElementById('share-link');
+      const shareLink = document.getElementById('share-link') as HTMLInputElement;
       if (roomCodeValue) roomCodeValue.textContent = roomCode || '';
       if (shareLink) shareLink.value = peerManager.getShareableLink();
 
       hideConnectionStatus();
       showWaitingRoom();
+      console.log('[Debug] Waiting room should now be visible');
+
+      // When guest connects, transition host from waiting room to game
+      peerManager.onConnect = () => {
+        hideConnectionStatus();
+        hideWaitingRoom();
+        hideAllModeScreens();
+        document.getElementById('ui-overlay')?.classList.remove('hidden');
+        rebuildBoardFromState();
+        updateUI();
+        resetTimerDisplays();
+        game.startTimer();
+      };
 
       peerManager.onDisconnect = () => {
         showMessage('Opponent disconnected');
@@ -1543,6 +1652,7 @@ function attachAllEventListeners(): void {
           game.handleMove(moveData.cellIndex, true);
           rebuildBoardFromState();
           updateUI();
+          checkGameOverAndShowMessage();
         } else if (data.type === MESSAGE_TYPES.RESET) {
           game.resetGame(false, true);
           rebuildBoardFromState();
@@ -1559,6 +1669,33 @@ function attachAllEventListeners(): void {
           game.applyFullState(syncData.state);
           rebuildBoardFromState();
           updateUI();
+        } else if (data.type === MESSAGE_TYPES.REMATCH_REQUEST) {
+          // Show rematch request modal
+          const rematchModal = document.getElementById('rematch-modal');
+          const rematchMessage = document.getElementById('rematch-message');
+          if (rematchMessage) rematchMessage.textContent = 'Opponent wants to play again!';
+          if (rematchModal) rematchModal.classList.remove('hidden');
+        } else if (data.type === MESSAGE_TYPES.REMATCH_RESPONSE) {
+          const responseData = data as { accepted: boolean };
+          document.getElementById('waiting-rematch-modal')?.classList.add('hidden');
+          if (responseData.accepted) {
+            // Reset the game
+            game.resetGame(false, true);
+            hideMessage();
+            rebuildBoardFromState();
+            updateUI();
+            resetTimerDisplays();
+            game.startTimer();
+          } else {
+            // Opponent declined, go back to menu
+            showMessage('Opponent declined rematch');
+            setTimeout(() => {
+              game.cleanup();
+              showModeSelectScreen();
+              document.getElementById('ui-overlay')?.classList.add('hidden');
+              clearPieces();
+            }, 2000);
+          }
         }
       };
     } catch (err) {
@@ -1607,6 +1744,7 @@ function attachAllEventListeners(): void {
         game.handleMove(moveData.cellIndex, true);
         rebuildBoardFromState();
         updateUI();
+        checkGameOverAndShowMessage();
       } else if (data.type === MESSAGE_TYPES.RESET) {
         game.resetGame(false, true);
         rebuildBoardFromState();
@@ -1623,10 +1761,39 @@ function attachAllEventListeners(): void {
         game.applyFullState(syncData.state);
         rebuildBoardFromState();
         updateUI();
+      } else if (data.type === MESSAGE_TYPES.REMATCH_REQUEST) {
+        // Show rematch request modal
+        const rematchModal = document.getElementById('rematch-modal');
+        const rematchMessage = document.getElementById('rematch-message');
+        if (rematchMessage) rematchMessage.textContent = 'Opponent wants to play again!';
+        if (rematchModal) rematchModal.classList.remove('hidden');
+      } else if (data.type === MESSAGE_TYPES.REMATCH_RESPONSE) {
+        const responseData = data as { accepted: boolean };
+        document.getElementById('waiting-rematch-modal')?.classList.add('hidden');
+        if (responseData.accepted) {
+          // Reset the game
+          game.resetGame(false, true);
+          hideMessage();
+          rebuildBoardFromState();
+          updateUI();
+          resetTimerDisplays();
+          game.startTimer();
+        } else {
+          // Opponent declined, go back to menu
+          showMessage('Opponent declined rematch');
+          setTimeout(() => {
+            game.cleanup();
+            showModeSelectScreen();
+            document.getElementById('ui-overlay')?.classList.add('hidden');
+            clearPieces();
+          }, 2000);
+        }
       }
     };
 
     try {
+      // Must initialize peer before connecting
+      await peerManager.initialize();
       await peerManager.connect(roomCode);
     } catch (err) {
       console.error('Failed to join room:', err);
@@ -1664,13 +1831,102 @@ if (document.readyState === 'loading') {
   attachAllEventListeners();
 }
 
-// Handle URL room code after listeners are attached
+// Handle URL room code after listeners are attached - auto join the room
 if (urlRoomCode) {
-  selectedRemoteTimer = 0;
-  setTimeout(() => {
-    const modeBtn = document.querySelector('.mode-btn[data-mode="pvp"]');
-    if (modeBtn) {
-      modeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  console.log('[Debug] Room code found in URL:', urlRoomCode);
+
+  setTimeout(async () => {
+    const peerManager = new PeerManager();
+    game.startRemoteGame(peerManager);
+
+    showConnectionStatus('Joining room...');
+
+    peerManager.onDisconnect = () => {
+      showMessage('Connection lost');
+      setTimeout(() => {
+        game.cleanup();
+        hideAllModeScreens();
+        document.getElementById('mode-select-overlay')?.classList.remove('hidden');
+      }, 2000);
+    };
+
+    peerManager.onMessage = (data) => {
+      if (data.type === MESSAGE_TYPES.GAME_START) {
+        console.log('[Debug] Guest received GAME_START message');
+        hideConnectionStatus();
+        hideWaitingRoom();
+        hideAllModeScreens();
+        document.getElementById('ui-overlay')?.classList.remove('hidden');
+        rebuildBoardFromState();
+        updateUI();
+        resetTimerDisplays();
+        game.startTimer();
+        clearRoomCodeFromUrl();
+      } else if (data.type === MESSAGE_TYPES.MOVE) {
+        const moveData = data as { cellIndex: number };
+        game.handleMove(moveData.cellIndex, true);
+        rebuildBoardFromState();
+        updateUI();
+        checkGameOverAndShowMessage();
+      } else if (data.type === MESSAGE_TYPES.RESET) {
+        game.resetGame(false, true);
+        rebuildBoardFromState();
+        updateUI();
+      } else if (data.type === MESSAGE_TYPES.TIMER_SYNC) {
+        const timerData = data as { remaining: number; player: Player };
+        playerTimers[timerData.player].remaining = timerData.remaining;
+        updatePlayerTimerDisplay(timerData.player === PLAYERS.X ? 'p1' : 'p2', timerData.player);
+      } else if (data.type === MESSAGE_TYPES.TIMER_TIMEOUT) {
+        const timeoutData = data as { timedOutPlayer: Player };
+        applyTimerTimeout(timeoutData.timedOutPlayer);
+      } else if (data.type === MESSAGE_TYPES.FULL_SYNC) {
+        const syncData = data as { state: ReturnType<typeof game.getFullState> };
+        game.applyFullState(syncData.state);
+        rebuildBoardFromState();
+        updateUI();
+      } else if (data.type === MESSAGE_TYPES.REMATCH_REQUEST) {
+        // Show rematch request modal
+        const rematchModal = document.getElementById('rematch-modal');
+        const rematchMessage = document.getElementById('rematch-message');
+        if (rematchMessage) rematchMessage.textContent = 'Opponent wants to play again!';
+        if (rematchModal) rematchModal.classList.remove('hidden');
+      } else if (data.type === MESSAGE_TYPES.REMATCH_RESPONSE) {
+        const responseData = data as { accepted: boolean };
+        document.getElementById('waiting-rematch-modal')?.classList.add('hidden');
+        if (responseData.accepted) {
+          // Reset the game
+          game.resetGame(false, true);
+          hideMessage();
+          rebuildBoardFromState();
+          updateUI();
+          resetTimerDisplays();
+          game.startTimer();
+        } else {
+          // Opponent declined, go back to menu
+          showMessage('Opponent declined rematch');
+          setTimeout(() => {
+            game.cleanup();
+            showModeSelectScreen();
+            document.getElementById('ui-overlay')?.classList.add('hidden');
+            clearPieces();
+          }, 2000);
+        }
+      }
+    };
+
+    try {
+      console.log('[Debug] Initializing peer for joining...');
+      await peerManager.initialize();
+      console.log('[Debug] Connecting to room:', urlRoomCode);
+      await peerManager.connect(urlRoomCode);
+      console.log('[Debug] Connected to room, waiting for GAME_START');
+    } catch (err) {
+      console.error('Failed to join room:', err);
+      showConnectionStatus('Failed to join room. Please check the code.');
+      setTimeout(() => {
+        hideConnectionStatus();
+        showModeSelectScreen();
+      }, 2000);
     }
   }, 500);
 }
