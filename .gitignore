@@ -1,3 +1,10 @@
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Vite
+.vite/
+
 # Dependencies
 node_modules/
 

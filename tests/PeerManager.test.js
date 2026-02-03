@@ -6,8 +6,8 @@ import {
     getRoomCodeFromUrl,
     clearRoomCodeFromUrl,
     checkWebRTCSupport
-} from '../js/multiplayer/PeerManager.js';
-import { PLAYERS } from '../js/game/constants.js';
+} from '../src/multiplayer/PeerManager.ts';
+import { PLAYERS } from '../src/game/constants.ts';
 
 describe('PeerManager utilities', () => {
     describe('generateRoomCode', () => {

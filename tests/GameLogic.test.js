@@ -8,8 +8,8 @@ import {
     getOpponent,
     findWinningMove,
     getGameStatus
-} from '../js/game/GameLogic.js';
-import { PLAYERS } from '../js/game/constants.js';
+} from '../src/game/GameLogic.ts';
+import { PLAYERS } from '../src/game/constants.ts';
 
 describe('GameLogic', () => {
     describe('checkWinner', () => {

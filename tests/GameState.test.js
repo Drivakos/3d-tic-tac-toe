@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { GameState } from '../js/game/GameState.js';
-import { PLAYERS, BOARD_SIZE } from '../js/game/constants.js';
+import { GameState } from '../src/game/GameState.ts';
+import { PLAYERS, BOARD_SIZE } from '../src/game/constants.ts';
 
 describe('GameState', () => {
     let gameState;
