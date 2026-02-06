@@ -185,13 +185,65 @@ if (roomParam) {
 }
 
 // Tick loop for timer UI updates
-// GameController calls onTimerTick
 game.onTimerTick = (remaining, total) => {
-  // Update timer UI
-  // We need to access UI elements. InputManager doesn't expose them directly?
-  // InputManager should have an updateTimer method.
+  // Update stage colors for visual effect
   renderManager.updateStageColors(total > 0 ? remaining / total : 1);
-  // ... update text
-  const timerEx = document.getElementById('timer-p1'); // ... simplistic
-  // This part should be in InputManager really.
+
+  // Show/hide timer container
+  const timersContainer = document.getElementById('timers-container');
+  if (total > 0) {
+    timersContainer?.classList.remove('hidden');
+  }
+
+  // Update timer display for current player
+  const currentPlayer = game.gameState.getCurrentPlayer();
+  const timerP1 = document.getElementById('timer-p1');
+  const timerP2 = document.getElementById('timer-p2');
+  const progress = total > 0 ? remaining / total : 1;
+
+  // Determine which player's timer to update
+  const playerAsX = game.gameState.getPlayerAsX();
+  const isP1Turn = (currentPlayer === 'X' && playerAsX === 1) || (currentPlayer === 'O' && playerAsX === 2);
+
+  if (isP1Turn && timerP1) {
+    const timerFill = timerP1.querySelector('.timer-fill') as HTMLElement;
+    const timerText = timerP1.querySelector('.timer-text');
+    if (timerFill) timerFill.style.width = `${progress * 100}%`;
+    if (timerText) timerText.textContent = Math.ceil(remaining).toString();
+    timerP1.classList.add('active');
+    timerP2?.classList.remove('active');
+  } else if (timerP2) {
+    const timerFill = timerP2.querySelector('.timer-fill') as HTMLElement;
+    const timerText = timerP2.querySelector('.timer-text');
+    if (timerFill) timerFill.style.width = `${progress * 100}%`;
+    if (timerText) timerText.textContent = Math.ceil(remaining).toString();
+    timerP2.classList.add('active');
+    timerP1?.classList.remove('active');
+  }
+};
+
+// Timer timeout handler - player loses when timer runs out
+game.onTimerTimeout = () => {
+  const currentPlayer = game.gameState.getCurrentPlayer();
+  // The player whose turn it was loses
+  const loser = currentPlayer;
+  const winner = loser === 'X' ? 'O' : 'X';
+
+  // Set game over state
+  game.gameState.setGameOver(winner, null);
+
+  // Update scores
+  const winnerPlayerNum = game.getPlayerNumberFromSymbol(winner);
+  game.scores[winnerPlayerNum]++;
+
+  // Show message
+  if (game.mode === 'ai' && loser === 'O') {
+    showMessage('AI ran out of time! You Win!');
+  } else if (game.mode === 'ai' && loser === 'X') {
+    showMessage('Time\'s up! AI Wins!');
+  } else {
+    showMessage(`Time's up! Player ${winnerPlayerNum} Wins!`);
+  }
+
+  inputManager.updateUI();
 };
