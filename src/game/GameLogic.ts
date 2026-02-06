@@ -3,7 +3,7 @@
  */
 
 import { WIN_PATTERNS, PLAYERS } from './constants';
-import type { Player, Board, CellIndex, GameStatus, WinPattern } from '../types/game';
+import type { Player, Board, CellIndex, GameStatus, WinPattern, Cell } from '../types/game';
 
 interface WinResult {
   winner: Player;
@@ -43,7 +43,7 @@ export function isValidMove(board: Board, index: number): boolean {
 }
 
 export function simulateMove(board: Board, index: number, player: Player): Board {
-  const newBoard = [...board] as Board;
+  const newBoard = [...board] as Cell[];
   newBoard[index] = player;
   return newBoard;
 }

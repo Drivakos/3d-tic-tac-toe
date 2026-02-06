@@ -133,6 +133,10 @@ export class AIController {
     this.maxDelay = 800;
   }
 
+  get thinking(): boolean {
+    return this.isThinking;
+  }
+
   setDifficulty(difficulty: AIDifficulty): void {
     this.difficulty = difficulty;
   }

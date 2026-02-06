@@ -2,6 +2,7 @@
  * PeerManager - Handles peer-to-peer connections for remote multiplayer
  */
 
+import Peer from 'peerjs';
 import { PLAYERS } from '../game/constants';
 import type { Player, GameState, Score, CellIndex } from '../types/game';
 import type {
@@ -108,7 +109,7 @@ interface PeerConnection {
 }
 
 export class PeerManager {
-  private peer: typeof Peer.prototype | null = null;
+  private peer: Peer | null = null;
   private connection: PeerConnection | null = null;
   private roomCode: string | null = null;
   private _isHost: boolean = false;
@@ -152,10 +153,7 @@ export class PeerManager {
 
   async initialize(customId?: string): Promise<string> {
     return new Promise((resolve, reject): void => {
-      if (typeof Peer === 'undefined') {
-        reject(new Error('PeerJS library not loaded'));
-        return;
-      }
+      // Removed check for typeof Peer as it is now imported
 
       const peerId = customId || `ttt-${generateRoomCode()}`;
 
@@ -193,21 +191,26 @@ export class PeerManager {
       console.log('Peer connected:', conn.peer);
       this._isConnected = true;
 
-      this.send({
-        type: MESSAGE_TYPES.GAME_START,
-        role: PLAYERS.O,
-        timerSeconds: this.gameSettings?.timerSeconds || 0
-      } as GameStartMessage);
+      // Small delay to ensure client is ready to receive data
+      setTimeout(() => {
+        console.log('Sending GAME_START to', conn.peer);
+        this.send({
+          type: MESSAGE_TYPES.GAME_START,
+          role: PLAYERS.O,
+          timerSeconds: this.gameSettings?.timerSeconds || 0
+        } as GameStartMessage);
 
-      if (this.onConnect) {
-        this.onConnect({
-          isHost: true,
-          myRole: PLAYERS.X
-        });
-      }
+        if (this.onConnect) {
+          this.onConnect({
+            isHost: true,
+            myRole: PLAYERS.X
+          });
+        }
+      }, 500);
     });
 
     conn.on('data', (data: unknown): void => {
+      console.log('Received data:', data);
       if (this.onMessage) this.onMessage(data as PeerMessage);
     });
 
@@ -223,56 +226,70 @@ export class PeerManager {
 
   async connect(roomCode: string): Promise<void> {
     return new Promise((resolve, reject): void => {
-      if (!this.peer) {
-        reject(new Error('Peer not initialized'));
-        return;
-      }
-
-      const fullPeerId = roomCode.startsWith('ttt-') ? roomCode : `ttt-${roomCode}`;
-
-      this.connection = this.peer.connect(fullPeerId, { reliable: true }) as unknown as PeerConnection;
-
-      const timeout = setTimeout((): void => {
-        if (!this._isConnected) {
-          reject(new Error('Connection timeout'));
+      try {
+        if (!this.peer) {
+          reject(new Error('Peer not initialized'));
+          return;
         }
-      }, 10000);
 
-      this.connection.on('open', (): void => {
-        clearTimeout(timeout);
-        console.log('Connected to host:', fullPeerId);
-        this._isConnected = true;
-        this._isHost = false;
-        resolve();
-      });
+        const fullPeerId = roomCode.startsWith('ttt-') ? roomCode : `ttt-${roomCode}`;
+        console.log('[PeerManager] Connecting to:', fullPeerId);
 
-      this.connection.on('data', (data: unknown): void => {
-        const message = data as PeerMessage;
-        if (message.type === MESSAGE_TYPES.GAME_START) {
-          const gameStartMsg = message as GameStartMessage;
-          this.myRole = gameStartMsg.role;
-          this.gameSettings = { timerSeconds: gameStartMsg.timerSeconds || 0 };
-          if (this.onConnect) {
-            this.onConnect({
-              isHost: false,
-              myRole: gameStartMsg.role,
-              timerSeconds: gameStartMsg.timerSeconds || 0
-            });
+        this.connection = this.peer.connect(fullPeerId, { reliable: true }) as unknown as PeerConnection;
+
+        const timeout = setTimeout((): void => {
+          if (!this._isConnected) {
+            console.error('[PeerManager] Connection timeout');
+            reject(new Error('Connection timeout'));
+            // Optionally close connection here
           }
-        }
-        if (this.onMessage) this.onMessage(message);
-      });
+        }, 10000);
 
-      this.connection.on('close', (): void => {
-        this._handleDisconnect();
-      });
+        this.connection.on('open', (): void => {
+          clearTimeout(timeout);
+          console.log('[PeerManager] Connected to host:', fullPeerId);
+          this._isConnected = true;
+          this._isHost = false;
+          resolve();
+        });
 
-      this.connection.on('error', (err: Error): void => {
-        clearTimeout(timeout);
-        console.error('Connection error:', err);
-        if (this.onError) this.onError(err);
+        this.connection.on('data', (data: unknown): void => {
+          console.log('[PeerManager] Received data:', data);
+          try {
+            // ... existing data handling logic
+            const message = data as PeerMessage;
+            if (message.type === MESSAGE_TYPES.GAME_START) {
+              const gameStartMsg = message as GameStartMessage;
+              this.myRole = gameStartMsg.role;
+              this.gameSettings = { timerSeconds: gameStartMsg.timerSeconds || 0 };
+              if (this.onConnect) {
+                this.onConnect({
+                  isHost: false,
+                  myRole: gameStartMsg.role,
+                  timerSeconds: gameStartMsg.timerSeconds || 0
+                });
+              }
+            }
+            if (this.onMessage) this.onMessage(message);
+          } catch (e) {
+            console.error('[PeerManager] Error handling data:', e);
+          }
+        });
+
+        this.connection.on('close', (): void => {
+          this._handleDisconnect();
+        });
+
+        this.connection.on('error', (err: Error): void => {
+          clearTimeout(timeout);
+          console.error('[PeerManager] Connection error:', err);
+          if (this.onError) this.onError(err);
+          reject(err);
+        });
+      } catch (err) {
+        console.error('[PeerManager] Unexpected error in connect:', err);
         reject(err);
-      });
+      }
     });
   }
 

@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Player, CellIndex } from './game';
 
 export interface GamePiece {

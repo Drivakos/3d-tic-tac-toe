@@ -3,9 +3,9 @@
  */
 
 import { PLAYERS, BOARD_SIZE } from './constants';
-import type { Player, Board, CellIndex, WinPattern, GameState as GameStateType } from '../types/game';
+import type { Player, Board, CellIndex, WinPattern, GameState as GameStateType, Cell } from '../types/game';
 
-export class GameStateManager {
+export class GameState {
   private board!: Board;
   private gameOver!: boolean;
   private winner!: Player | null;
@@ -74,7 +74,7 @@ export class GameStateManager {
       return false;
     }
 
-    this.board[index] = player;
+    (this.board as Cell[])[index] = player;
     return true;
   }
 
@@ -123,4 +123,4 @@ export class GameStateManager {
   }
 }
 
-export const GameState = GameStateManager;
+

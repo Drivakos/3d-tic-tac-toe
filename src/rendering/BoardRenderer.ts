@@ -267,6 +267,8 @@ export function addPieceToBoard(
     const piece = player === PLAYERS.X ? createX(cellIndex) : createO(cellIndex);
     boardGroup.add(piece);
     pieces.push(piece);
+    // Set scale to 1 immediately so piece is visible (animation removed for simplicity)
+    piece.scale.set(1, 1, 1);
     return piece;
 }
 
