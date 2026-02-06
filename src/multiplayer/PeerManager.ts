@@ -28,7 +28,6 @@ export const MESSAGE_TYPES: Record<string, MessageType> = {
   RESET: 'reset',
   SYNC: 'sync',
   FULL_SYNC: 'full-sync',
-  CHAT: 'chat',
   TIMER_SYNC: 'timer-sync',
   TIMER_TIMEOUT: 'timer-timeout',
   REMATCH_REQUEST: 'rematch-request',

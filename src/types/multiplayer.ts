@@ -6,7 +6,6 @@ export type MessageType =
   | 'reset'
   | 'sync'
   | 'full-sync'
-  | 'chat'
   | 'timer-sync'
   | 'timer-timeout'
   | 'rematch-request'
@@ -67,10 +66,7 @@ export interface RematchResponseMessage extends BaseMessage {
   accepted: boolean;
 }
 
-export interface ChatMessage extends BaseMessage {
-  type: 'chat';
-  text: string;
-}
+// ChatMessage removed - chat feature not implemented
 
 export type PeerMessage =
   | MoveMessage
@@ -82,7 +78,6 @@ export type PeerMessage =
   | GameStartMessage
   | RematchRequestMessage
   | RematchResponseMessage
-  | ChatMessage
   | BaseMessage;
 
 export interface ConnectionStatus {

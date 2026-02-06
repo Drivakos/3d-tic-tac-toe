@@ -161,9 +161,41 @@ peerManager.onMessage = (data) => {
         showMessage('Opponent declined rematch');
       }
       break;
-    case 'sync': // ... 
+    case 'full-sync':
+      // Apply complete game state from host (used for initial sync or after rematch)
+      const fullSyncMsg = data as import('./types/multiplayer').FullSyncMessage;
+      game.applyFullState({
+        gameState: fullSyncMsg.gameState,
+        scores: fullSyncMsg.scores,
+        timerSeconds: fullSyncMsg.timerSeconds,
+        gameStarted: fullSyncMsg.gameStarted
+      });
+      renderManager.rebuildBoard(game.gameState.getBoard());
+      inputManager.updateUI();
+      if (fullSyncMsg.gameStarted) {
+        game.setupTimer();
+        game.startTimer();
+      }
       break;
-    // ... other cases
+    case 'timer-sync':
+      // Sync timer state from host (for keeping timers in sync)
+      const timerSyncMsg = data as import('./types/multiplayer').TimerSyncMessage;
+      // Update local timer display based on host's timer
+      if (game.timer) {
+        const progress = timerSyncMsg.remaining / game.timerSeconds;
+        renderManager.updateStageColors(progress);
+      }
+      break;
+    case 'timer-timeout':
+      // Handle remote player timeout
+      const timeoutMsg = data as import('./types/multiplayer').TimerTimeoutMessage;
+      const winner = timeoutMsg.timedOutPlayer === 'X' ? 'O' : 'X';
+      game.gameState.setGameOver(winner, null);
+      const winnerNum = game.getPlayerNumberFromSymbol(winner);
+      game.scores[winnerNum]++;
+      showMessage(`Time's up! Player ${winnerNum} Wins!`);
+      inputManager.updateUI();
+      break;
   }
 };
 

@@ -25,7 +25,7 @@ describe('PeerManager utilities', () => {
         it('should only contain uppercase alphanumeric characters', () => {
             const validChars = '0123456789ABCDEF';
             const code = generateRoomCode();
-            
+
             for (const char of code) {
                 expect(validChars).toContain(char);
             }
@@ -38,12 +38,12 @@ describe('PeerManager utilities', () => {
 
         it('should generate unique codes (UUID-based)', () => {
             const codes = new Set();
-            
+
             // Generate 100 codes and check they're all unique
             for (let i = 0; i < 100; i++) {
                 codes.add(generateRoomCode());
             }
-            
+
             // UUID-based codes should be completely unique
             expect(codes.size).toBe(100);
         });
@@ -71,9 +71,6 @@ describe('PeerManager utilities', () => {
             expect(MESSAGE_TYPES.REMATCH_RESPONSE).toBe('rematch-response');
         });
 
-        it('should have chat message type', () => {
-            expect(MESSAGE_TYPES.CHAT).toBe('chat');
-        });
     });
 
     describe('checkWebRTCSupport', () => {
@@ -126,7 +123,7 @@ describe('PeerManager class', () => {
     describe('getStatus', () => {
         it('should return correct initial status', () => {
             const status = peerManager.getStatus();
-            
+
             expect(status).toEqual({
                 isConnected: false,
                 isHost: false,
@@ -142,7 +139,7 @@ describe('PeerManager class', () => {
             peerManager.roomCode = 'ABC123';
 
             const status = peerManager.getStatus();
-            
+
             expect(status).toEqual({
                 isConnected: true,
                 isHost: true,
@@ -177,7 +174,7 @@ describe('PeerManager class', () => {
 
             peerManager.roomCode = 'ABC123';
             const link = peerManager.getShareableLink();
-            
+
             expect(link).toBe('https://example.com/game/?room=ABC123');
 
             // Restore
@@ -194,7 +191,7 @@ describe('PeerManager class', () => {
             peerManager.isHost = true;
             peerManager.myRole = PLAYERS.X;
             peerManager.roomCode = 'ABC123';
-            
+
             // Mock connection and peer
             peerManager.connection = { close: vi.fn() };
             peerManager.peer = { destroy: vi.fn() };
@@ -223,10 +220,10 @@ describe('PeerManager class', () => {
         it('should send data when connection is open', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             const data = { type: 'test', value: 123 };
             const result = peerManager.send(data);
-            
+
             expect(result).toBe(true);
             expect(mockSend).toHaveBeenCalledWith(data);
         });
@@ -236,9 +233,9 @@ describe('PeerManager class', () => {
         it('should send move message with correct format', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendMove(4);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.MOVE,
                 cellIndex: 4
@@ -250,9 +247,9 @@ describe('PeerManager class', () => {
         it('should send reset message', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendReset();
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.RESET
             });
@@ -263,15 +260,15 @@ describe('PeerManager class', () => {
         it('should send sync message with state', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             const state = {
                 board: ['X', null, 'O', null, null, null, null, null, null],
                 currentPlayer: PLAYERS.O,
                 scores: { X: 1, O: 0 }
             };
-            
+
             peerManager.sendSync(state);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.SYNC,
                 ...state
@@ -283,7 +280,7 @@ describe('PeerManager class', () => {
         it('should send full sync message with complete state', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             const state = {
                 gameState: {
                     board: ['X', null, 'O', null, 'X', null, null, null, null],
@@ -296,9 +293,9 @@ describe('PeerManager class', () => {
                 timerSeconds: 10,
                 gameStarted: true
             };
-            
+
             peerManager.sendFullSync(state);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.FULL_SYNC,
                 ...state
@@ -310,9 +307,9 @@ describe('PeerManager class', () => {
         it('should send timer sync with remaining time and player', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendTimerSync(7.5, PLAYERS.X);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.TIMER_SYNC,
                 remaining: 7.5,
@@ -323,9 +320,9 @@ describe('PeerManager class', () => {
         it('should handle different players', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendTimerSync(3.2, PLAYERS.O);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.TIMER_SYNC,
                 remaining: 3.2,
@@ -338,9 +335,9 @@ describe('PeerManager class', () => {
         it('should send timeout notification with timed out player', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendTimerTimeout(PLAYERS.X);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.TIMER_TIMEOUT,
                 timedOutPlayer: PLAYERS.X
@@ -350,9 +347,9 @@ describe('PeerManager class', () => {
         it('should handle O player timeout', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendTimerTimeout(PLAYERS.O);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.TIMER_TIMEOUT,
                 timedOutPlayer: PLAYERS.O
@@ -364,9 +361,9 @@ describe('PeerManager class', () => {
         it('should send rematch request with player number', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendRematchRequest(1);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.REMATCH_REQUEST,
                 playerNum: 1
@@ -376,9 +373,9 @@ describe('PeerManager class', () => {
         it('should handle player 2 request', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendRematchRequest(2);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.REMATCH_REQUEST,
                 playerNum: 2
@@ -390,9 +387,9 @@ describe('PeerManager class', () => {
         it('should send acceptance response', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendRematchResponse(true);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.REMATCH_RESPONSE,
                 accepted: true
@@ -402,9 +399,9 @@ describe('PeerManager class', () => {
         it('should send decline response', () => {
             const mockSend = vi.fn();
             peerManager.connection = { open: true, send: mockSend };
-            
+
             peerManager.sendRematchResponse(false);
-            
+
             expect(mockSend).toHaveBeenCalledWith({
                 type: MESSAGE_TYPES.REMATCH_RESPONSE,
                 accepted: false
@@ -435,7 +432,7 @@ describe('PeerManager class', () => {
 describe('URL utilities', () => {
     // These tests would need DOM mocking for full coverage
     // Basic structure tests only
-    
+
     describe('getRoomCodeFromUrl', () => {
         it('should be a function', () => {
             expect(typeof getRoomCodeFromUrl).toBe('function');

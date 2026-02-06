@@ -276,6 +276,16 @@ export class InputManager {
                 });
             }
         });
+
+        // Cancel waiting for opponent
+        document.getElementById('cancel-waiting-btn')?.addEventListener('click', () => {
+            document.getElementById('waiting-room')?.classList.add('hidden');
+            document.getElementById('remote-setup')?.classList.remove('hidden');
+            // Cleanup peer connection
+            if (this.game.peerManager) {
+                this.game.peerManager.destroy();
+            }
+        });
     }
 
     private attachRematchHandlers(): void {
