@@ -100,6 +100,7 @@ type MessageCallback = (data: PeerMessage) => void;
 type ErrorCallback = (err: Error) => void;
 
 interface PeerConnection {
+  on(event: 'error', callback: (err: unknown) => void): void;
   on(event: string, callback: (...args: unknown[]) => void): void;
   send(data: unknown): void;
   close(): void;
@@ -217,9 +218,9 @@ export class PeerManager {
       this._handleDisconnect();
     });
 
-    conn.on('error', (err: Error): void => {
+    conn.on('error', (err: unknown): void => {
       console.error('Connection error:', err);
-      if (this.onError) this.onError(err);
+      if (this.onError) this.onError(err instanceof Error ? err : new Error(String(err)));
     });
   }
 
@@ -279,11 +280,12 @@ export class PeerManager {
           this._handleDisconnect();
         });
 
-        this.connection.on('error', (err: Error): void => {
+        this.connection.on('error', (err: unknown): void => {
           clearTimeout(timeout);
           console.error('[PeerManager] Connection error:', err);
-          if (this.onError) this.onError(err);
-          reject(err);
+          const error = err instanceof Error ? err : new Error(String(err));
+          if (this.onError) this.onError(error);
+          reject(error);
         });
       } catch (err) {
         console.error('[PeerManager] Unexpected error in connect:', err);

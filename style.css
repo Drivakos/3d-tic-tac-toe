@@ -1203,6 +1203,11 @@ h1 {
     display: flex;
     gap: var(--space-md);
     justify-content: center;
+    margin-bottom: 6px;
+}
+
+#cancel-rematch-btn {
+    margin-bottom: 6px;
 }
 
 .modal-btn {

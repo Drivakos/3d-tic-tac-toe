@@ -4,7 +4,7 @@ import { AIController } from './AI';
 import { PLAYERS, GAME_MODES } from './constants';
 import { PeerManager, MESSAGE_TYPES } from '../multiplayer/PeerManager';
 import { Timer, TIMER_PRESETS } from './Timer';
-import type { Player, GameMode, AIDifficulty, GameStatus, Score, CellIndex } from '../types';
+import type { Player, GameMode, AIDifficulty, GameStatus, Score, CellIndex, GameState as GameStateType } from '../types';
 
 export interface GameSettings {
     timerSeconds: number;
@@ -153,7 +153,7 @@ export class GameController {
         }
     }
 
-    getFullState(): { gameState: ReturnType<typeof this.gameState.toJSON>; scores: Score; timerSeconds: number; gameStarted: boolean } {
+    getFullState(): { gameState: GameStateType; scores: Score; timerSeconds: number; gameStarted: boolean } {
         return {
             gameState: this.gameState.toJSON(),
             scores: { ...this.scores },
@@ -162,7 +162,7 @@ export class GameController {
         };
     }
 
-    applyFullState(state: { gameState?: ReturnType<typeof this.gameState.toJSON>; scores?: Score; timerSeconds?: number; gameStarted?: boolean }): void {
+    applyFullState(state: { gameState?: GameStateType; scores?: Score; timerSeconds?: number; gameStarted?: boolean }): void {
         if (state.gameState) {
             this.gameState.fromJSON(state.gameState);
         }
