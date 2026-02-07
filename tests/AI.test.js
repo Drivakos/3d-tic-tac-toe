@@ -6,9 +6,9 @@ import {
     getMediumMove,
     getAIMove,
     AIController
-} from '../js/game/AI.js';
-import { checkWinner } from '../js/game/GameLogic.js';
-import { PLAYERS, AI_DIFFICULTY } from '../js/game/constants.js';
+} from '../src/game/AI.ts';
+import { checkWinner } from '../src/game/GameLogic.ts';
+import { PLAYERS, AI_DIFFICULTY } from '../src/game/constants.ts';
 
 describe('AI', () => {
     describe('getRandomMove', () => {

@@ -1,65 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    
+
     <!-- SEO Meta Tags -->
     <title>3D Tic Tac Toe - Play Online with Friends | Free Multiplayer Game</title>
-    <meta name="description" content="Play 3D Tic Tac Toe online! Beautiful neon graphics, local & remote multiplayer, AI opponents with 3 difficulty levels. Free, no download required.">
+    <meta name="description"
+        content="Play 3D Tic Tac Toe online! Beautiful neon graphics, local & remote multiplayer, AI opponents with 3 difficulty levels. Free, no download required.">
     <meta name="keywords" content="tic tac toe, 3d game, multiplayer, online game, browser game, webgl, three.js">
     <meta name="author" content="3D Tic Tac Toe">
     <meta name="robots" content="index, follow">
-    
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://3d-tic-tac-toe-game.netlify.app/">
     <meta property="og:title" content="3D Tic Tac Toe - Play Online with Friends">
-    <meta property="og:description" content="Beautiful 3D Tic Tac Toe with online multiplayer. Challenge friends or AI!">
+    <meta property="og:description"
+        content="Beautiful 3D Tic Tac Toe with online multiplayer. Challenge friends or AI!">
     <meta property="og:image" content="https://3d-tic-tac-toe-game.netlify.app/og-image.png">
-    
+
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://3d-tic-tac-toe-game.netlify.app/">
     <meta name="twitter:title" content="3D Tic Tac Toe - Play Online">
-    <meta name="twitter:description" content="Beautiful 3D Tic Tac Toe with online multiplayer. Challenge friends or AI!">
+    <meta name="twitter:description"
+        content="Beautiful 3D Tic Tac Toe with online multiplayer. Challenge friends or AI!">
     <meta name="twitter:image" content="https://3d-tic-tac-toe-game.netlify.app/og-image.png">
-    
+
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="icon" type="image/svg+xml" href="favicon-32.svg" sizes="32x32">
     <link rel="apple-touch-icon" href="apple-touch-icon.svg">
-    
+
     <!-- Theme Color -->
     <meta name="theme-color" content="#0a0a0f">
     <meta name="msapplication-TileColor" content="#0a0a0f">
-    
+
     <!-- iOS Web App -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="3D Tic Tac Toe">
-    
+
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://unpkg.com">
-    
+
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
-    
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap"
+        rel="stylesheet">
+
     <!-- Styles -->
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="container">
         <canvas id="game-canvas"></canvas>
-        
+
         <!-- Mode Selection Screen -->
         <div id="mode-select-overlay">
             <div id="mode-select-panel">
                 <h1>3D TIC TAC TOE</h1>
                 <p class="mode-subtitle">Select Game Mode</p>
-                
+
                 <div id="mode-buttons">
                     <button class="mode-btn" data-mode="pvp">
                         <span class="mode-icon">👥</span>
@@ -68,7 +75,7 @@
                             <span class="mode-desc">Play with a friend</span>
                         </div>
                     </button>
-                    
+
                     <button class="mode-btn" data-mode="ai">
                         <span class="mode-icon">🤖</span>
                         <div class="mode-info">
@@ -77,7 +84,7 @@
                         </div>
                     </button>
                 </div>
-                
+
                 <!-- 2 Player Type Selection (Local/Remote) -->
                 <div id="pvp-type-select" class="hidden">
                     <p class="difficulty-label">How do you want to play?</p>
@@ -94,8 +101,8 @@
                         </button>
                     </div>
                 </div>
-                
-                <!-- Timer Selection for PvP -->
+
+                <!-- Timer Selection for Local PvP -->
                 <div id="timer-select" class="hidden">
                     <p class="difficulty-label">Move Timer</p>
                     <div id="timer-buttons">
@@ -106,7 +113,19 @@
                     </div>
                     <button id="back-to-pvp-type-from-timer" class="back-btn">← BACK</button>
                 </div>
-                
+
+                <!-- Timer Selection for Remote PvP -->
+                <div id="remote-timer-select" class="hidden">
+                    <p class="difficulty-label">Move Timer</p>
+                    <div id="remote-timer-buttons">
+                        <button class="timer-btn" data-timer="0">OFF</button>
+                        <button class="timer-btn" data-timer="10">10s</button>
+                        <button class="timer-btn" data-timer="5">5s</button>
+                        <button class="timer-btn" data-timer="3">3s</button>
+                    </div>
+                    <button id="back-to-pvp-type-from-remote-timer" class="back-btn">← BACK</button>
+                </div>
+
                 <!-- Remote Game Setup -->
                 <div id="remote-setup" class="hidden">
                     <div id="create-room-section">
@@ -115,11 +134,11 @@
                             <span>🎮</span> CREATE ROOM
                         </button>
                     </div>
-                    
+
                     <div class="or-divider">
                         <span>OR</span>
                     </div>
-                    
+
                     <div id="join-room-section">
                         <p class="section-label">Join an existing game</p>
                         <div class="input-group">
@@ -127,10 +146,10 @@
                             <button id="join-room-btn" class="action-btn">JOIN</button>
                         </div>
                     </div>
-                    
-                    <button id="back-to-pvp-type" class="back-btn">← BACK</button>
+
+                    <button id="back-to-remote-timer" class="back-btn">← BACK</button>
                 </div>
-                
+
                 <!-- Waiting Room -->
                 <div id="waiting-room" class="hidden">
                     <div class="waiting-content">
@@ -152,7 +171,7 @@
                     </div>
                     <button id="cancel-waiting-btn" class="back-btn">CANCEL</button>
                 </div>
-                
+
                 <!-- Connection Status -->
                 <div id="connection-status" class="hidden">
                     <div class="connecting-content">
@@ -162,31 +181,41 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- Timer Selection for AI Mode -->
+                <div id="ai-timer-select" class="hidden">
+                    <p class="difficulty-label">Move Timer</p>
+                    <div id="ai-timer-buttons">
+                        <button class="timer-btn" data-timer="0">OFF</button>
+                        <button class="timer-btn" data-timer="10">10s</button>
+                        <button class="timer-btn" data-timer="5">5s</button>
+                        <button class="timer-btn" data-timer="3">3s</button>
+                    </div>
+                    <button id="back-to-mode-from-ai-timer" class="back-btn">← BACK</button>
+                </div>
+
                 <div id="difficulty-select" class="hidden">
                     <p class="difficulty-label">Select Difficulty</p>
                     <div id="difficulty-buttons">
-                        <button class="difficulty-btn" data-difficulty="easy" data-timer="10">
+                        <button class="difficulty-btn" data-difficulty="easy">
                             <span class="diff-name">EASY</span>
-                            <span class="diff-timer">10s timer</span>
                         </button>
-                        <button class="difficulty-btn" data-difficulty="medium" data-timer="5">
+                        <button class="difficulty-btn" data-difficulty="medium">
                             <span class="diff-name">MEDIUM</span>
-                            <span class="diff-timer">5s timer</span>
                         </button>
-                        <button class="difficulty-btn" data-difficulty="hard" data-timer="3">
+                        <button class="difficulty-btn" data-difficulty="hard">
                             <span class="diff-name">HARD</span>
-                            <span class="diff-timer">3s timer</span>
                         </button>
                     </div>
+                    <button id="back-to-ai-timer" class="back-btn">← BACK</button>
                 </div>
             </div>
         </div>
-        
+
         <!-- Game UI -->
         <div id="ui-overlay" class="hidden">
             <h1>3D TIC TAC TOE</h1>
-            
+
             <div id="status-panel">
                 <div id="mode-indicator">
                     <span id="game-mode-label">2 PLAYERS</span>
@@ -200,21 +229,19 @@
                     <span id="current-player" class="player-x">X</span>
                 </div>
                 <div id="score-board">
-                    <div class="score player-x-score">
-                        <span class="score-label">X</span>
-                        <span id="score-x">0</span>
+                    <div class="score">
+                        <span id="score-p1">P1:0</span>
                     </div>
-                    <div class="score-divider">:</div>
-                    <div class="score player-o-score">
-                        <span class="score-label">O</span>
-                        <span id="score-o">0</span>
+                    <div class="score-divider"> </div>
+                    <div class="score">
+                        <span id="score-p2">P2:0</span>
                     </div>
                 </div>
                 <div id="turn-indicator" class="hidden">
                     <span id="turn-text">Your turn!</span>
                 </div>
             </div>
-            
+
             <!-- Dual Timer Display -->
             <div id="timers-container" class="hidden">
                 <div id="timer-p1" class="player-timer">
@@ -232,15 +259,15 @@
                     <span class="timer-text">10</span>
                 </div>
             </div>
-            
+
             <div id="message" class="hidden"></div>
-            
+
             <div id="game-buttons">
                 <button id="reset-btn">NEW GAME</button>
                 <button id="menu-btn">MAIN MENU</button>
             </div>
         </div>
-        
+
         <!-- Rematch Request Modal -->
         <div id="rematch-modal" class="modal hidden">
             <div class="modal-content">
@@ -252,7 +279,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Waiting for Response Modal -->
         <div id="waiting-rematch-modal" class="modal hidden">
             <div class="modal-content">
@@ -266,16 +293,8 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
-    </script>
-    <script type="module" src="main.js"></script>
-</body>
-</html>
 
+    <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Timer, TIMER_PRESETS } from '../js/game/Timer.js';
+import { Timer, TIMER_PRESETS } from '../src/game/Timer.ts';
 
 // Mock requestAnimationFrame for Node.js environment
 global.requestAnimationFrame = vi.fn((cb) => setTimeout(cb, 16));
