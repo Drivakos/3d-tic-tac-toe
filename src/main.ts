@@ -37,8 +37,7 @@ inputManager.onCreateRoom = async (timerSeconds: number) => {
     // Hide other screens
     document.getElementById('remote-setup')?.classList.add('hidden');
   } catch (err) {
-    console.error('Failed to create room:', err);
-    alert('Failed to create room. Please try again.');
+    console.error('Failed to create room. Please try again.');
   }
 };
 
@@ -56,7 +55,6 @@ inputManager.onJoinRoom = async (code: string) => {
 
     // Game start will be handled by PeerManager events
   } catch (err) {
-    console.error('[Main] Failed to join room:', err);
     alert('Failed to join room. Please check the code and try again.\nError: ' + (err instanceof Error ? err.message : String(err)));
     const connectionStatus = document.getElementById('connection-status');
     if (connectionStatus) connectionStatus.classList.add('hidden');
@@ -65,38 +63,26 @@ inputManager.onJoinRoom = async (code: string) => {
 
 // Wire up PeerManager callbacks
 peerManager.onConnect = (info) => {
-  console.log('[Main] onConnect triggered', info);
   // Hide waiting/connection screens
   hideAllModeScreens();
-  console.log('[Main] Hidden waiting/connection screens and overlay');
 
   if (info.isHost) {
-    console.log('[Main] I am Host');
     // Host logic is already handled partly by startRemoteGame
   } else {
-    console.log('[Main] I am Joiner, starting remote game');
     // Joiner logic
     game.startRemoteGame(peerManager, info.timerSeconds || 0);
     game.gameState.resetGameNumber(); // Ensure sync?
   }
 
-  // Update Role UI in InputManager? 
-  // Ideally InputManager or RenderManager handles this, but we can do it here simply for now
   const uiOverlay = document.getElementById('ui-overlay');
   if (uiOverlay) {
     uiOverlay.classList.remove('hidden');
-    console.log('[Main] Shown UI overlay');
-  } else {
-    console.error('[Main] UI overlay not found!');
   }
 
   try {
     renderManager.rebuildBoard(game.gameState.getBoard());
-    console.log('[Main] Board rebuilt');
     inputManager.updateUI();
-    console.log('[Main] UI updated');
     game.startTimer();
-    console.log('[Main] Timer started (if any)');
   } catch (e) {
     console.error('[Main] Error updating UI/Board in onConnect:', e);
   }
@@ -233,15 +219,8 @@ peerManager.onMessage = (data) => {
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 if (roomParam) {
-  // Auto-join logic
-  // We need to simulate clicking "Two Players" -> "Remote" -> "Join"
-  // Or just jump straight to it.
-  // Let's defer this to user interaction or auto-trigger if robust.
   const modeSelectPanel = document.getElementById('mode-select-panel');
   if (modeSelectPanel) {
-    // Show join UI pre-filled?
-    // For now, let's just leave it to default behavior or user manual entry.
-    // Or implement the original logic:
     inputManager.onJoinRoom(roomParam);
   }
 }

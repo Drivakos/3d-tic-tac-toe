@@ -152,20 +152,17 @@ export class PeerManager {
 
   async initialize(customId?: string): Promise<string> {
     return new Promise((resolve, reject): void => {
-      // Removed check for typeof Peer as it is now imported
 
       const peerId = customId || `ttt-${generateRoomCode()}`;
-
       this.peer = new Peer(peerId, { debug: 1 });
-
       this.peer.on('open', (id: string): void => {
-        console.log('Peer initialized with ID:', id);
+
         this.roomCode = id.replace('ttt-', '');
         resolve(id);
       });
 
       this.peer.on('error', (err: { type: string; message?: string }): void => {
-        console.error('Peer error:', err);
+
         if (err.type === 'unavailable-id') {
           this.destroy();
           this.initialize().then(resolve).catch(reject);
@@ -187,12 +184,11 @@ export class PeerManager {
     this.myRole = PLAYERS.X;
 
     conn.on('open', (): void => {
-      console.log('Peer connected:', conn.peer);
+
       this._isConnected = true;
 
-      // Small delay to ensure client is ready to receive data
       setTimeout(() => {
-        console.log('Sending GAME_START to', conn.peer);
+
         this.send({
           type: MESSAGE_TYPES.GAME_START,
           role: PLAYERS.O,
@@ -209,7 +205,6 @@ export class PeerManager {
     });
 
     conn.on('data', (data: unknown): void => {
-      console.log('Received data:', data);
       if (this.onMessage) this.onMessage(data as PeerMessage);
     });
 
@@ -218,7 +213,6 @@ export class PeerManager {
     });
 
     conn.on('error', (err: Error): void => {
-      console.error('Connection error:', err);
       if (this.onError) this.onError(err);
     });
   }
@@ -232,30 +226,24 @@ export class PeerManager {
         }
 
         const fullPeerId = roomCode.startsWith('ttt-') ? roomCode : `ttt-${roomCode}`;
-        console.log('[PeerManager] Connecting to:', fullPeerId);
-
         this.connection = this.peer.connect(fullPeerId, { reliable: true }) as unknown as PeerConnection;
 
         const timeout = setTimeout((): void => {
           if (!this._isConnected) {
-            console.error('[PeerManager] Connection timeout');
             reject(new Error('Connection timeout'));
-            // Optionally close connection here
           }
         }, 15000);
 
         this.connection.on('open', (): void => {
           clearTimeout(timeout);
-          console.log('[PeerManager] Connected to host:', fullPeerId);
           this._isConnected = true;
           this._isHost = false;
           resolve();
         });
 
         this.connection.on('data', (data: unknown): void => {
-          console.log('[PeerManager] Received data:', data);
+
           try {
-            // ... existing data handling logic
             const message = data as PeerMessage;
             if (message.type === MESSAGE_TYPES.GAME_START) {
               const gameStartMsg = message as GameStartMessage;
@@ -271,7 +259,7 @@ export class PeerManager {
             }
             if (this.onMessage) this.onMessage(message);
           } catch (e) {
-            console.error('[PeerManager] Error handling data:', e);
+
           }
         });
 
@@ -281,19 +269,18 @@ export class PeerManager {
 
         this.connection.on('error', (err: Error): void => {
           clearTimeout(timeout);
-          console.error('[PeerManager] Connection error:', err);
           if (this.onError) this.onError(err);
           reject(err);
         });
       } catch (err) {
-        console.error('[PeerManager] Unexpected error in connect:', err);
+
         reject(err);
       }
     });
   }
 
   private _handleDisconnect(): void {
-    console.log('Peer disconnected');
+
     this._isConnected = false;
     if (this.onDisconnect) this.onDisconnect();
   }

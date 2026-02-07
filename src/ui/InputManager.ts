@@ -33,13 +33,9 @@ export class InputManager {
     }
 
     public attachAllEventListeners(): void {
-        console.log('[Debug] Attaching event listeners...');
-
         // Canvas Click Listener (Raycasting)
         const canvas = this.renderManager.sceneComponents.renderer.domElement;
         canvas.addEventListener('click', (event) => this.handleCanvasClick(event));
-        // Simple touch support (treat as click)
-        // canvas.addEventListener('touchstart', (event) => this.handleCanvasClick(event), { passive: false });
 
         // Mode button handlers
         document.querySelectorAll('.mode-btn').forEach((btn) => {
@@ -143,7 +139,7 @@ export class InputManager {
     private async processMove(index: number): Promise<void> {
         // Check if it's our turn (important for remote PvP)
         if (!this.game.canMove()) {
-            console.log('[InputManager] Cannot move - not my turn or game is over');
+
             return;
         }
 
@@ -232,7 +228,7 @@ export class InputManager {
     }
 
     private handleLocalPvPStart(timer: number): void {
-        console.log('[Debug] Starting local PvP game with timer:', timer);
+
         this.game.startGame('pvp-local', undefined, timer);
         hideAllModeScreens();
         hideMessage();
@@ -244,7 +240,7 @@ export class InputManager {
     }
 
     private handleDifficultySelection(difficulty: AIDifficulty, timer: number): void {
-        console.log('[Debug] Starting AI game:', difficulty, 'timer:', timer);
+
         this.game.startGame('ai', difficulty, timer);
         hideAllModeScreens();
         hideMessage();
@@ -337,7 +333,7 @@ export class InputManager {
                         }, 2000);
                     }
                 }).catch(err => {
-                    console.error('Failed to copy text: ', err);
+
                 });
             }
         });
