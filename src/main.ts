@@ -21,6 +21,8 @@ game.peerManager = peerManager; // Game needs potential access, or we inject it 
 inputManager.onCreateRoom = async (timerSeconds: number) => {
   try {
     const id = await peerManager.initialize();
+    // Set game settings so they're shared with the joiner
+    peerManager.setGameSettings({ timerSeconds });
     // Setup room creation logic
     game.startRemoteGame(peerManager, timerSeconds);
     // Show waiting room via UI manager or direct DOM
@@ -180,10 +182,38 @@ peerManager.onMessage = (data) => {
     case 'timer-sync':
       // Sync timer state from host (for keeping timers in sync)
       const timerSyncMsg = data as import('./types/multiplayer').TimerSyncMessage;
-      // Update local timer display based on host's timer
-      if (game.timer) {
+      // Update local timer display and stage colors based on remote timer
+      if (game.timerSeconds > 0) {
         const progress = timerSyncMsg.remaining / game.timerSeconds;
         renderManager.updateStageColors(progress);
+
+        // Show timer container
+        const timersContainer = document.getElementById('timers-container');
+        timersContainer?.classList.remove('hidden');
+
+        // Update timer display for the player whose turn it is
+        const playerAsX = game.gameState.getPlayerAsX();
+        const currentPlayer = timerSyncMsg.player;
+        const isP1Turn = (currentPlayer === 'X' && playerAsX === 1) || (currentPlayer === 'O' && playerAsX === 2);
+
+        const timerP1 = document.getElementById('timer-p1');
+        const timerP2 = document.getElementById('timer-p2');
+
+        if (isP1Turn && timerP1) {
+          const timerFill = timerP1.querySelector('.timer-fill') as HTMLElement;
+          const timerText = timerP1.querySelector('.timer-text');
+          if (timerFill) timerFill.style.width = `${progress * 100}%`;
+          if (timerText) timerText.textContent = Math.ceil(timerSyncMsg.remaining).toString();
+          timerP1.classList.add('active');
+          timerP2?.classList.remove('active');
+        } else if (timerP2) {
+          const timerFill = timerP2.querySelector('.timer-fill') as HTMLElement;
+          const timerText = timerP2.querySelector('.timer-text');
+          if (timerFill) timerFill.style.width = `${progress * 100}%`;
+          if (timerText) timerText.textContent = Math.ceil(timerSyncMsg.remaining).toString();
+          timerP2.classList.add('active');
+          timerP1?.classList.remove('active');
+        }
       }
       break;
     case 'timer-timeout':
@@ -252,6 +282,11 @@ game.onTimerTick = (remaining, total) => {
     timerP2.classList.add('active');
     timerP1?.classList.remove('active');
   }
+
+  // Send timer sync to remote peer (only if we're the one whose turn it is)
+  if (game.isRemote() && game.isMyTurn() && peerManager.isConnected) {
+    peerManager.sendTimerSync(remaining, currentPlayer);
+  }
 };
 
 // Timer timeout handler - player loses when timer runs out
@@ -267,6 +302,11 @@ game.onTimerTimeout = () => {
   // Update scores
   const winnerPlayerNum = game.getPlayerNumberFromSymbol(winner);
   game.scores[winnerPlayerNum]++;
+
+  // Send timeout notification to remote peer
+  if (game.isRemote() && peerManager.isConnected) {
+    peerManager.sendTimerTimeout(loser);
+  }
 
   // Show message
   if (game.mode === 'ai' && loser === 'O') {

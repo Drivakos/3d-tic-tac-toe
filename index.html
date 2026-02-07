@@ -102,7 +102,7 @@
                     </div>
                 </div>
 
-                <!-- Timer Selection for PvP -->
+                <!-- Timer Selection for Local PvP -->
                 <div id="timer-select" class="hidden">
                     <p class="difficulty-label">Move Timer</p>
                     <div id="timer-buttons">
@@ -112,6 +112,18 @@
                         <button class="timer-btn" data-timer="3">3s</button>
                     </div>
                     <button id="back-to-pvp-type-from-timer" class="back-btn">← BACK</button>
+                </div>
+
+                <!-- Timer Selection for Remote PvP -->
+                <div id="remote-timer-select" class="hidden">
+                    <p class="difficulty-label">Move Timer</p>
+                    <div id="remote-timer-buttons">
+                        <button class="timer-btn" data-timer="0">OFF</button>
+                        <button class="timer-btn" data-timer="10">10s</button>
+                        <button class="timer-btn" data-timer="5">5s</button>
+                        <button class="timer-btn" data-timer="3">3s</button>
+                    </div>
+                    <button id="back-to-pvp-type-from-remote-timer" class="back-btn">← BACK</button>
                 </div>
 
                 <!-- Remote Game Setup -->
@@ -135,7 +147,7 @@
                         </div>
                     </div>
 
-                    <button id="back-to-pvp-type" class="back-btn">← BACK</button>
+                    <button id="back-to-remote-timer" class="back-btn">← BACK</button>
                 </div>
 
                 <!-- Waiting Room -->
@@ -170,22 +182,32 @@
                     </div>
                 </div>
 
+                <!-- Timer Selection for AI Mode -->
+                <div id="ai-timer-select" class="hidden">
+                    <p class="difficulty-label">Move Timer</p>
+                    <div id="ai-timer-buttons">
+                        <button class="timer-btn" data-timer="0">OFF</button>
+                        <button class="timer-btn" data-timer="10">10s</button>
+                        <button class="timer-btn" data-timer="5">5s</button>
+                        <button class="timer-btn" data-timer="3">3s</button>
+                    </div>
+                    <button id="back-to-mode-from-ai-timer" class="back-btn">← BACK</button>
+                </div>
+
                 <div id="difficulty-select" class="hidden">
                     <p class="difficulty-label">Select Difficulty</p>
                     <div id="difficulty-buttons">
-                        <button class="difficulty-btn" data-difficulty="easy" data-timer="10">
+                        <button class="difficulty-btn" data-difficulty="easy">
                             <span class="diff-name">EASY</span>
-                            <span class="diff-timer">10s timer</span>
                         </button>
-                        <button class="difficulty-btn" data-difficulty="medium" data-timer="5">
+                        <button class="difficulty-btn" data-difficulty="medium">
                             <span class="diff-name">MEDIUM</span>
-                            <span class="diff-timer">5s timer</span>
                         </button>
-                        <button class="difficulty-btn" data-difficulty="hard" data-timer="3">
+                        <button class="difficulty-btn" data-difficulty="hard">
                             <span class="diff-name">HARD</span>
-                            <span class="diff-timer">3s timer</span>
                         </button>
                     </div>
+                    <button id="back-to-ai-timer" class="back-btn">← BACK</button>
                 </div>
             </div>
         </div>

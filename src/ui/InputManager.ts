@@ -20,6 +20,9 @@ export class InputManager {
     private uiOverlay: HTMLElement | null;
     private raycaster: THREE.Raycaster;
     private mouse: THREE.Vector2;
+    private selectedTimer: number = 0; // Track selected timer for AI flow
+    private remoteTimer: number = 0; // Track selected timer for remote PvP
+    private currentFlow: 'ai' | 'pvp-local' | 'pvp-remote' | null = null; // Track current selection flow
 
     constructor(game: GameController, renderManager: RenderManager) {
         this.game = game;
@@ -54,12 +57,41 @@ export class InputManager {
             });
         });
 
-        // Difficulty handlers
+        // Difficulty handlers (AI mode - after timer selected)
         document.querySelectorAll('.difficulty-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const difficulty = btn.getAttribute('data-difficulty') as AIDifficulty;
+                this.handleDifficultySelection(difficulty, this.selectedTimer);
+            });
+        });
+
+        // AI Timer selection handlers
+        document.querySelectorAll('#ai-timer-buttons .timer-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
                 const timer = parseInt(btn.getAttribute('data-timer') || '0');
-                this.handleDifficultySelection(difficulty, timer);
+                this.selectedTimer = timer;
+                // Show difficulty selection
+                document.getElementById('ai-timer-select')?.classList.add('hidden');
+                document.getElementById('difficulty-select')?.classList.remove('hidden');
+            });
+        });
+
+        // Local PvP Timer selection handlers
+        document.querySelectorAll('#timer-buttons .timer-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const timer = parseInt(btn.getAttribute('data-timer') || '0');
+                this.handleLocalPvPStart(timer);
+            });
+        });
+
+        // Remote PvP Timer selection handlers
+        document.querySelectorAll('#remote-timer-buttons .timer-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const timer = parseInt(btn.getAttribute('data-timer') || '0');
+                this.remoteTimer = timer;
+                // Show remote setup
+                document.getElementById('remote-timer-select')?.classList.add('hidden');
+                document.getElementById('remote-setup')?.classList.remove('hidden');
             });
         });
 
@@ -171,31 +203,44 @@ export class InputManager {
         document.getElementById('mode-buttons')?.classList.add('hidden');
         document.getElementById('pvp-type-select')?.classList.add('hidden');
         document.getElementById('timer-select')?.classList.add('hidden');
+        document.getElementById('ai-timer-select')?.classList.add('hidden');
         document.getElementById('remote-setup')?.classList.add('hidden');
         document.getElementById('difficulty-select')?.classList.add('hidden');
 
         if (mode === 'pvp') {
+            this.currentFlow = null;
             document.getElementById('pvp-type-select')?.classList.remove('hidden');
         } else if (mode === 'ai') {
-            document.getElementById('difficulty-select')?.classList.remove('hidden');
+            this.currentFlow = 'ai';
+            // Show timer selection first for AI mode
+            document.getElementById('ai-timer-select')?.classList.remove('hidden');
         }
     }
 
     private handlePvpTypeSelection(type: string | null): void {
         if (type === 'local') {
-            console.log('[Debug] Starting local PvP game...');
-            this.game.startGame('pvp-local');
-            hideAllModeScreens();
-            hideMessage();
-            this.uiOverlay?.classList.remove('hidden');
-
-            this.renderManager.rebuildBoard(this.game.gameState.getBoard());
-            this.updateUI();
-            this.game.startTimer();
-        } else if (type === 'remote') {
+            this.currentFlow = 'pvp-local';
+            // Show timer selection for local PvP
             document.getElementById('pvp-type-select')?.classList.add('hidden');
-            document.getElementById('remote-setup')?.classList.remove('hidden');
+            document.getElementById('timer-select')?.classList.remove('hidden');
+        } else if (type === 'remote') {
+            this.currentFlow = 'pvp-remote';
+            // Show timer selection for remote PvP
+            document.getElementById('pvp-type-select')?.classList.add('hidden');
+            document.getElementById('remote-timer-select')?.classList.remove('hidden');
         }
+    }
+
+    private handleLocalPvPStart(timer: number): void {
+        console.log('[Debug] Starting local PvP game with timer:', timer);
+        this.game.startGame('pvp-local', undefined, timer);
+        hideAllModeScreens();
+        hideMessage();
+        this.uiOverlay?.classList.remove('hidden');
+
+        this.renderManager.rebuildBoard(this.game.gameState.getBoard());
+        this.updateUI();
+        this.game.startTimer();
     }
 
     private handleDifficultySelection(difficulty: AIDifficulty, timer: number): void {
@@ -210,14 +255,34 @@ export class InputManager {
     }
 
     private attachBackButtons(): void {
-        document.getElementById('back-to-pvp-type')?.addEventListener('click', () => {
+        // Back from remote setup to remote timer select
+        document.getElementById('back-to-remote-timer')?.addEventListener('click', () => {
             document.getElementById('remote-setup')?.classList.add('hidden');
-            document.getElementById('pvp-type-select')?.classList.remove('hidden');
+            document.getElementById('remote-timer-select')?.classList.remove('hidden');
         });
 
+        // Back from local timer select to pvp type
         document.getElementById('back-to-pvp-type-from-timer')?.addEventListener('click', () => {
             document.getElementById('timer-select')?.classList.add('hidden');
             document.getElementById('pvp-type-select')?.classList.remove('hidden');
+        });
+
+        // Back from remote timer select to pvp type
+        document.getElementById('back-to-pvp-type-from-remote-timer')?.addEventListener('click', () => {
+            document.getElementById('remote-timer-select')?.classList.add('hidden');
+            document.getElementById('pvp-type-select')?.classList.remove('hidden');
+        });
+
+        // Back from AI timer select to mode select
+        document.getElementById('back-to-mode-from-ai-timer')?.addEventListener('click', () => {
+            document.getElementById('ai-timer-select')?.classList.add('hidden');
+            document.getElementById('mode-buttons')?.classList.remove('hidden');
+        });
+
+        // Back from difficulty select to AI timer select
+        document.getElementById('back-to-ai-timer')?.addEventListener('click', () => {
+            document.getElementById('difficulty-select')?.classList.add('hidden');
+            document.getElementById('ai-timer-select')?.classList.remove('hidden');
         });
     }
 
@@ -247,8 +312,8 @@ export class InputManager {
 
     private attachRemoteSetup(): void {
         document.getElementById('create-room-btn')?.addEventListener('click', async () => {
-            const timer = 0;
-            if (this.onCreateRoom) await this.onCreateRoom(timer);
+            // Use the selected remote timer
+            if (this.onCreateRoom) await this.onCreateRoom(this.remoteTimer);
         });
 
         document.getElementById('join-room-btn')?.addEventListener('click', () => {

@@ -112,6 +112,12 @@ export function hideAllModeScreens(): void {
     if (elements.waitingRoom) elements.waitingRoom.classList.add('hidden');
     if (elements.connectionStatus) elements.connectionStatus.classList.add('hidden');
     if (elements.difficultySelect) elements.difficultySelect.classList.add('hidden');
+    // Hide AI timer select
+    const aiTimerSelect = document.getElementById('ai-timer-select');
+    if (aiTimerSelect) aiTimerSelect.classList.add('hidden');
+    // Hide remote timer select
+    const remoteTimerSelect = document.getElementById('remote-timer-select');
+    if (remoteTimerSelect) remoteTimerSelect.classList.add('hidden');
 }
 
 /**
@@ -128,6 +134,12 @@ export function showModeSelectScreen(): void {
     if (elements.waitingRoom) elements.waitingRoom.classList.add('hidden');
     if (elements.connectionStatus) elements.connectionStatus.classList.add('hidden');
     if (elements.difficultySelect) elements.difficultySelect.classList.add('hidden');
+    // Hide AI timer select
+    const aiTimerSelect = document.getElementById('ai-timer-select');
+    if (aiTimerSelect) aiTimerSelect.classList.add('hidden');
+    // Hide remote timer select
+    const remoteTimerSelect = document.getElementById('remote-timer-select');
+    if (remoteTimerSelect) remoteTimerSelect.classList.add('hidden');
 }
 
 /**

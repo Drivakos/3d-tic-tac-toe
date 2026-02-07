@@ -23,13 +23,29 @@ test.describe('Menu Navigation', () => {
         await expect(page.locator('[data-pvp-type="remote"]')).toBeVisible();
     });
 
-    test('navigating to VS Computer shows difficulty selection', async ({ page }) => {
+    test('navigating to VS Computer shows AI timer selection', async ({ page }) => {
         await page.click('[data-mode="ai"]');
-        await expect(page.locator('#difficulty-select')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('[data-difficulty="easy"]')).toBeVisible();
+        // Now shows timer selection first
+        await expect(page.locator('#ai-timer-select')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('#ai-timer-buttons [data-timer="0"]')).toBeVisible();
+        await expect(page.locator('#ai-timer-buttons [data-timer="10"]')).toBeVisible();
     });
 
-    test('can navigate back from PVP type selection', async ({ page }) => {
+    test('can navigate from AI timer to difficulty selection', async ({ page }) => {
+        await page.click('[data-mode="ai"]');
+        await expect(page.locator('#ai-timer-select')).toBeVisible({ timeout: 10000 });
+
+        // Select a timer
+        await page.click('#ai-timer-buttons [data-timer="5"]');
+
+        // Difficulty selection should now be visible
+        await expect(page.locator('#difficulty-select')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-difficulty="easy"]')).toBeVisible();
+        await expect(page.locator('[data-difficulty="medium"]')).toBeVisible();
+        await expect(page.locator('[data-difficulty="hard"]')).toBeVisible();
+    });
+
+    test('can navigate back from local PVP timer selection', async ({ page }) => {
         await page.click('[data-mode="pvp"]');
         await expect(page.locator('#pvp-type-select')).toBeVisible({ timeout: 10000 });
 
@@ -40,5 +56,27 @@ test.describe('Menu Navigation', () => {
         // Click back
         await page.click('#back-to-pvp-type-from-timer');
         await expect(page.locator('#pvp-type-select')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('can navigate back from remote PVP timer selection', async ({ page }) => {
+        await page.click('[data-mode="pvp"]');
+        await expect(page.locator('#pvp-type-select')).toBeVisible({ timeout: 10000 });
+
+        // Navigate to remote timer selection
+        await page.click('[data-pvp-type="remote"]');
+        await expect(page.locator('#remote-timer-select')).toBeVisible({ timeout: 10000 });
+
+        // Click back
+        await page.click('#back-to-pvp-type-from-remote-timer');
+        await expect(page.locator('#pvp-type-select')).toBeVisible({ timeout: 10000 });
+    });
+
+    test('can navigate back from AI timer selection to mode select', async ({ page }) => {
+        await page.click('[data-mode="ai"]');
+        await expect(page.locator('#ai-timer-select')).toBeVisible({ timeout: 10000 });
+
+        // Click back
+        await page.click('#back-to-mode-from-ai-timer');
+        await expect(page.locator('#mode-buttons')).toBeVisible({ timeout: 10000 });
     });
 });
