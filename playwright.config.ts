@@ -13,6 +13,13 @@ export default defineConfig({
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
     },
+    webServer: {
+        command: 'npm run dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: true,
+        stdout: 'ignore',
+        stderr: 'pipe',
+    },
     projects: [
         {
             name: 'chromium',
