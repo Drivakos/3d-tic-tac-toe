@@ -212,8 +212,9 @@ export class PeerManager {
       this._handleDisconnect();
     });
 
-    conn.on('error', (err: Error): void => {
-      if (this.onError) this.onError(err);
+    conn.on('error', (err: unknown): void => {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (this.onError) this.onError(error);
     });
   }
 
@@ -267,10 +268,11 @@ export class PeerManager {
           this._handleDisconnect();
         });
 
-        this.connection.on('error', (err: Error): void => {
+        this.connection.on('error', (err: unknown): void => {
+          const error = err instanceof Error ? err : new Error(String(err));
           clearTimeout(timeout);
-          if (this.onError) this.onError(err);
-          reject(err);
+          if (this.onError) this.onError(error);
+          reject(error);
         });
       } catch (err) {
 

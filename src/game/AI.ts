@@ -145,7 +145,7 @@ export class AIController {
     this.isThinking = true;
 
     const delay = this.minDelay + Math.random() * (this.maxDelay - this.minDelay);
-    await new Promise((resolve): number => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     const move = getAIMove(board, this.difficulty, this.player);
     this.isThinking = false;
