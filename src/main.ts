@@ -55,7 +55,9 @@ inputManager.onJoinRoom = async (code: string) => {
 
     // Game start will be handled by PeerManager events
   } catch (err) {
-    alert('Failed to join room. Please check the code and try again.\nError: ' + (err instanceof Error ? err.message : String(err)));
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    showMessage(`Failed to join room: ${errorMsg}`);
+    
     const connectionStatus = document.getElementById('connection-status');
     if (connectionStatus) connectionStatus.classList.add('hidden');
   }
@@ -234,6 +236,9 @@ game.onTimerTick = (remaining, total) => {
   const timersContainer = document.getElementById('timers-container');
   if (total > 0) {
     timersContainer?.classList.remove('hidden');
+  } else {
+    timersContainer?.classList.add('hidden');
+    return; // No need to update further if no timer
   }
 
   // Update timer display for current player

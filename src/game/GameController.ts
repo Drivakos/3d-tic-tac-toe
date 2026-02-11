@@ -42,17 +42,22 @@ export class GameController {
     startGame(mode: GameMode, difficulty?: AIDifficulty, timerSeconds: number = 0): void {
         this.mode = mode;
         this.scores = { 1: 0, 2: 0 };
-        this.timerSeconds = timerSeconds;
+        
+        // -1 means "explicitly OFF", 0 means "default/not specified"
+        if (timerSeconds === -1) {
+            this.timerSeconds = 0;
+        } else if (timerSeconds === 0 && mode === GAME_MODES.AI && difficulty) {
+            const preset = TIMER_PRESETS[difficulty.toUpperCase() as keyof typeof TIMER_PRESETS];
+            this.timerSeconds = preset || 0;
+        } else {
+            this.timerSeconds = timerSeconds;
+        }
+
         this.gameState.resetGameNumber();
         this.gameState.reset(false);
 
         if (mode === GAME_MODES.AI && difficulty) {
             this.aiController = new AIController(difficulty, PLAYERS.O);
-            if (timerSeconds === 0) {
-                // Use safer type access or default to 0 if not found
-                const preset = TIMER_PRESETS[difficulty.toUpperCase() as keyof typeof TIMER_PRESETS];
-                this.timerSeconds = preset || 0;
-            }
         } else {
             this.aiController = null;
         }
@@ -97,6 +102,10 @@ export class GameController {
             );
         } else {
             this.timer = null;
+            // Explicitly call onTimerTick with 0 total to hide UI if it was visible
+            if (this.onTimerTick) {
+                this.onTimerTick(0, 0);
+            }
         }
     }
 
